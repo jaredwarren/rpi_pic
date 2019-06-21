@@ -1,0 +1,41 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+.main {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px;
+}
+.main form {
+    border: 1px solid lightgray;
+    padding: 6px;
+
+}
+</style>
+
+{{end}}
+
+{{define "body"}}
+<div class="main">
+    <form class="pure-form pure-form-aligned" action="/user/register" method="post">
+        <fieldset>
+            <div class="pure-control-group">
+                <label for="password1">Password</label>
+                <input id="password1" type="password" name="password1" placeholder="Password" value="asdf">
+            </div>
+        
+            <div class="pure-control-group">
+                <label for="password2">Re-Enter Password</label>
+                <input id="password2" type="password" name="password2" placeholder="re-enter password" value="asdf">
+            </div>
+        
+            <div class="pure-controls">
+                <button type="submit" class="pure-button pure-button-primary">Submit</button>
+            </div>
+            <input type="hidden" name="username" value="{{.Username}}">
+            <input type="hidden" name="token" value="{{.Token}}">
+        </fieldset>
+    </form>
+</div>
+{{end}}
