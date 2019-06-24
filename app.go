@@ -14,7 +14,7 @@ import (
 
 func main() {
 
-	userStore, err := user.NewStore()
+	userStore, err := user.NewStore("./user.db")
 	if err != nil {
 		panic(err.Error())
 	}

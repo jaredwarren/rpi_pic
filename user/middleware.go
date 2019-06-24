@@ -3,6 +3,8 @@ package user
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/jaredwarren/rpi_pic/form"
 )
 
 // middleware provides a convenient mechanism for filtering HTTP requests
@@ -49,6 +51,25 @@ func Login(next http.HandlerFunc) http.HandlerFunc {
 		if !ok || !u.Authenticated {
 			session.AddFlash("Please try again.")
 			http.Redirect(w, r, "/user/login", http.StatusFound)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}
+}
+
+// CsrfForm validate form with csrf token
+func CsrfForm(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		// validate session token
+		tokenHash := r.FormValue("csrf_token")
+		_, ok := form.GetForm(tokenHash)
+		if !ok {
+			fmt.Println("[E] form expired")
+			// session.AddFlash("Login Failed, Please try again.")
+			http.Redirect(w, r, r.URL.Path, http.StatusFound) /// hopefully this doesn't create a loop
 			return
 		}
 

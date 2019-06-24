@@ -9,9 +9,9 @@ import (
 )
 
 // NewStore ...
-func NewStore() (store *Store, err error) {
+func NewStore(path string) (store *Store, err error) {
 	store = &Store{}
-	db, err := bolt.Open("./user.db", 0666, nil)
+	db, err := bolt.Open(path, 0666, nil)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -159,10 +159,18 @@ func (us *Store) GetToken(key string) (v string, err error) {
 }
 
 // SetToken ...
-func (us *Store) SetToken(key, value string) (err error) {
+func (us *Store) SetToken(key, value []byte) (err error) {
 	err = us.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("token"))
-		return b.Put([]byte(key), []byte(value))
+		return b.Put(key, value)
 	})
 	return
+}
+
+// DeleteToken ...
+func (us *Store) DeleteToken(key string) (err error) {
+	return us.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("token"))
+		return b.Delete([]byte(key))
+	})
 }

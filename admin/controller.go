@@ -1,22 +1,30 @@
 package admin
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"strings"
+	"text/template"
 
 	"github.com/jaredwarren/rpi_pic/app"
 	"github.com/jaredwarren/rpi_pic/user"
+	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/gomail.v2"
 )
 
 // Controller implements the home resource.
 type Controller struct {
-	udb *user.Store
+	udb     *user.Store
+	service *app.Service
 }
 
 // NewAdminController creates a home controller.
 func NewAdminController(service *app.Service, udb *user.Store) *Controller {
 	return &Controller{
-		udb: udb,
+		udb:     udb,
+		service: service,
 	}
 }
 
@@ -29,7 +37,8 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	// admin delete user
 	service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("DELETE")
 	// invite user to register
-	service.Mux.HandleFunc("/admin/user/invite", admin(ctrl.TODO)).Methods("GET")
+	service.Mux.HandleFunc("/admin/user/invite", admin(ctrl.Invite)).Methods("GET")
+	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(admin(ctrl.InviteHandler))).Methods("POST")
 
 	// ## Picture management
 	// picture list
@@ -58,8 +67,8 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 
 // TODO ...
 func (c *Controller) TODO(w http.ResponseWriter, r *http.Request) {
-	msg := "TODO..." + r.URL.String()
-	fmt.Println(msg)
+	msg := "TODO...." + r.URL.String()
+	fmt.Printf("TODO: %+v\n", r)
 	w.Write([]byte(msg))
 }
 
@@ -74,6 +83,214 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 	for _, user := range users {
 		fmt.Printf("%+v\n", user)
 	}
+}
+
+// Invite ...
+func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.String())
+
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/invite.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Token    string
+	}{
+		Title:    "login",
+		Messages: user.GetMessages(r),
+		Token:    "",
+	})
+}
+
+// InviteHandler ...
+func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.String())
+
+	// // get session
+	// session, err := store.Get(r, "user-session")
+	// if err != nil {
+	// 	fmt.Println("[E] no session", err)
+	// 	session.AddFlash("Please try again.")
+	// 	http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+	// 	return
+	// }
+
+	r.ParseForm()
+	username := r.FormValue("username")
+
+	// verify user
+	if username == "" {
+		fmt.Println("Empty username")
+		// session.AddFlash("Invalid username.")
+		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		return
+	}
+
+	// look for current user
+	// Check for duplicate username
+	u, err := c.udb.Find("username", username)
+	if err != nil {
+		fmt.Println("[E] no user", err)
+		// session.AddFlash("Please try again.")
+		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		return
+	}
+	if u != nil {
+		// check if user is already registered
+		if u.Password != "" {
+			fmt.Printf("[E] user found, %s, %+v\n", err, u)
+			// session.AddFlash("User already registered.")
+			http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// for now
+			return
+		}
+	} else {
+		u = &user.User{
+			Username: username,
+		}
+	}
+
+	// for now just use the same "password"
+	hash, err := bcrypt.GenerateFromPassword([]byte("password1"), bcrypt.MinCost)
+	if err != nil {
+		fmt.Println("[E] pass gen error", err)
+		// session.AddFlash("Please try again.")
+		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		return
+	}
+	c.udb.SetToken([]byte(username), hash)
+
+	id, err := c.udb.Save(u)
+	if err != nil {
+		fmt.Println("[E] user gen error", err)
+		// session.AddFlash("Please try again.")
+		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		return
+	}
+	u.ID = id
+
+	subject := fmt.Sprintf("Message...")
+
+	// TODO: get current public url.....
+	url := fmt.Sprintf("http://localhost/user/register?username=%s&token=%s", username, hash)
+
+	emailTemplates := template.Must(template.ParseFiles("templates/email/invite.html", "templates/email/base.html"))
+	var tpl bytes.Buffer
+	emailTemplates.ExecuteTemplate(&tpl, "base", &struct {
+		URL string
+	}{
+		URL: url,
+	})
+	body := tpl.String()
+
+	// TODO: make template
+	// body := fmt.Sprintf(`Register Here: <a href="%s">Link</a>`, url)
+	// templates.
+
+	if c.service.Config.GetBool("email") {
+		// test mail
+		m := gomail.NewMessage()
+		m.SetHeader("From", "alex@example.com")
+		m.SetHeader("To", "jlwarren1@gmail.com")
+		// m.SetAddressHeader("Cc", "dan@example.com", "Dan")
+		m.SetHeader("Subject", subject)
+		// m.SetBody("text/html", "Hello <b>Bob</b> and <i>Cora</i>!")
+		m.SetBody("text/html", body)
+
+		// cmd := exec.Command("/usr/sbin/sendmail", "-t")
+		// var stdOutBuf bytes.Buffer
+		// var stdErrBuf bytes.Buffer
+		// cmd.Stdout = &stdOutBuf
+		// cmd.Stderr = &stdErrBuf
+
+		// pw, err := cmd.StdinPipe()
+		// if err != nil {
+		// 	fmt.Println("EEE:", err)
+		// 	return
+		// }
+
+		// err = cmd.Run()
+		// if err != nil {
+		// 	fmt.Println("EEE:", err)
+		// 	return
+		// }
+
+		// stdOut := strings.TrimSuffix(stdOutBuf.String(), "\n")
+		// stdErr := strings.TrimSuffix(stdErrBuf.String(), "\n")
+
+		// var errs [3]error
+		// _, errs[0] = m.WriteTo(pw)
+		// errs[1] = pw.Close()
+		// errs[2] = cmd.Wait()
+		// for _, err = range errs {
+		// 	if err != nil {
+		// 		fmt.Println("...", err)
+		// 		// return
+		// 	}
+		// }
+
+		// fmt.Println("OUt:", stdOut)
+		// fmt.Println("ERR:", stdErr)
+
+		// fromEmail := "test@example.com"
+		// toEmail := "jlwarren1@gmail.com"
+		// msg := "Subject: Sendmail Using Go"
+
+		// sendmail := exec.Command("/usr/sbin/sendmail", "-f", fromEmail, toEmail)
+		// stdin, err := sendmail.StdinPipe()
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// stdout, err := sendmail.StdoutPipe()
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// sendmail.Start()
+		// stdin.Write([]byte(msg))
+		// stdin.Close()
+		// sentBytes, _ := ioutil.ReadAll(stdout)
+		// sendmail.Wait()
+
+		// fmt.Println("Send Command Output\n")
+		// fmt.Println(string(sentBytes))
+
+		// TODO: figure out how to send mail on pi
+		// TODO: make sure port:25 is open
+		// (echo >/dev/tcp/localhost/25) &>/dev/null && echo "TCP port 25 opened" || echo "TCP port 25 closed"
+		http.Redirect(w, r, "/admin/user", http.StatusFound)
+	} else {
+		// parse every time to make updates easier, and save memory
+		templates := template.Must(template.ParseFiles("templates/admin/inviteEmail.html", "templates/base.html"))
+		templates.ExecuteTemplate(w, "base", &struct {
+			Title    string
+			Messages []string
+			Subject  string
+			Body     string
+		}{
+			Title:    "login",
+			Messages: user.GetMessages(r),
+			Subject:  subject,
+			Body:     body,
+		})
+	}
+
+}
+
+// RunBash ...
+func RunBash(commandString string, env []string) (stdOut, stdErr string) {
+	cmd := exec.Command("bash", "-c", commandString)
+	if len(env) > 0 {
+		cmd.Env = env
+	}
+	var stdOutBuf bytes.Buffer
+	var stdErrBuf bytes.Buffer
+	cmd.Stdout = &stdOutBuf
+	cmd.Stderr = &stdErrBuf
+	cmd.Run()
+	stdOut = strings.TrimSuffix(stdOutBuf.String(), "\n")
+	stdErr = strings.TrimSuffix(stdErrBuf.String(), "\n")
+	return
 }
 
 // // Register form
@@ -92,7 +309,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	}
 
 // 	// parse every time to make updates easier, and save memory
-// 	templates := template.Must(template.ParseFiles("templates/user/register.html", "templates/base.html"))
+// 	templates := template.Must(template.ParseFiles("templates/admin/user/invite.html", "templates/base.html"))
 // 	templates.ExecuteTemplate(w, "base", &struct {
 // 		Title    string
 // 		Messages []string
@@ -115,7 +332,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	if err != nil {
 // 		fmt.Println("[E]", err)
 // 		session.AddFlash("Please try again.")
-// 		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 		return
 // 	}
 
@@ -131,7 +348,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 		if dbToken != formToken {
 // 			fmt.Println("[E]", err)
 // 			session.AddFlash("Unable to register.")
-// 			http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 			http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 			return
 // 		}
 // 	}
@@ -140,7 +357,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	if username == "" {
 // 		fmt.Println("Empty username")
 // 		session.AddFlash("Invalid username.")
-// 		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 		return
 // 	}
 
@@ -149,7 +366,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	if err != nil {
 // 		fmt.Println("[E]", err)
 // 		session.AddFlash("Please try again.")
-// 		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 		return
 // 	}
 // 	if user != nil {
@@ -168,7 +385,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	if password1 == "" || password2 == "" || password1 != password2 {
 // 		fmt.Println("Passwords don't match, or are emtpy", password1, password2)
 // 		session.AddFlash("Passwords doesn't match.")
-// 		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 		return
 // 	}
 
@@ -180,7 +397,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	if err != nil {
 // 		fmt.Println("[E]", err)
 // 		session.AddFlash("Please try again.")
-// 		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 		return
 // 	}
 
@@ -190,7 +407,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 // 	if err != nil {
 // 		fmt.Println("[E]", err)
 // 		session.AddFlash("Please try again.")
-// 		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+// 		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
 // 		return
 // 	}
 

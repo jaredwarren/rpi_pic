@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
+	"github.com/jaredwarren/rpi_pic/form"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -52,12 +53,12 @@ func MountUserController(service *app.Service, ctrl *Controller) {
 	// user register form
 	service.Mux.HandleFunc("/user/register", ctrl.Register).Methods("GET")
 	// submit user register form
-	service.Mux.HandleFunc("/user/register", ctrl.RegisterHandler).Methods("POST")
+	service.Mux.HandleFunc("/user/register", CsrfForm(ctrl.RegisterHandler)).Methods("POST")
 
 	// user login form
 	service.Mux.HandleFunc("/user/login", ctrl.Login).Methods("GET")
 	// submit user login
-	service.Mux.HandleFunc("/user/login", ctrl.LoginHandler).Methods("POST")
+	service.Mux.HandleFunc("/user/login", CsrfForm(ctrl.LoginHandler)).Methods("POST")
 
 	service.Mux.HandleFunc("/user/logout", ctrl.LogoutHandler).Methods("GET")
 
@@ -81,30 +82,37 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("invalid username"))
 		return
 	}
+
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		w.Write([]byte("invalid token"))
 		return
 	}
 
+	csrfToken := form.New()
+
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/register.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
-		Title    string
-		Messages []string
-		Username string
-		Token    string
+		Title     string
+		Messages  []string
+		Username  string
+		Token     string
+		CsrfToken string
 	}{
-		Title:    fmt.Sprintf("Register: %s", username),
-		Messages: getMessages(r),
-		Username: username,
-		Token:    token,
+		Title:     fmt.Sprintf("Register: %s", username),
+		Messages:  GetMessages(r),
+		Username:  username,
+		Token:     token,
+		CsrfToken: csrfToken.Hash,
 	})
 }
 
 // RegisterHandler on submit form
 func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
+
+	r.ParseForm()
 
 	// get session
 	session, err := store.Get(r, "user-session")
@@ -115,21 +123,16 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.ParseForm()
 	username := r.FormValue("username")
 
 	// validate token
-	// for now don't validate token, because it's not implemented
-	validateToken := false
-	if validateToken {
-		dbToken, _ := c.udb.GetToken(username)
-		formToken := r.FormValue("token")
-		if dbToken != formToken {
-			fmt.Println("[E] no token", err)
-			session.AddFlash("Unable to register.")
-			http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
-			return
-		}
+	dbToken, _ := c.udb.GetToken(username)
+	formToken := r.FormValue("token")
+	if dbToken != formToken {
+		fmt.Println("[E] no token", err)
+		session.AddFlash("Unable to register.")
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+		return
 	}
 
 	// verify user
@@ -149,13 +152,17 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user != nil {
-		fmt.Printf("[E] user found, %s, %+v\n", err, user)
-		session.AddFlash("User already registered.")
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// for now
-		return
-	}
-	user = &User{
-		Username: username,
+		// check if user is already registered
+		if user.Password != "" {
+			fmt.Printf("[E] user found, %s, %+v\n", err, user)
+			session.AddFlash("User already registered.")
+			http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// for now
+			return
+		}
+	} else {
+		user = &User{
+			Username: username,
+		}
 	}
 
 	// Verify password
@@ -197,6 +204,13 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// if all is successful, delete token
+	err = c.udb.DeleteToken(dbToken)
+	if err != nil {
+		// not sure what to do here....
+		fmt.Println("[E] session save error", err)
+	}
+
 	// redirect
 	http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", user.ID), http.StatusFound)
 }
@@ -205,20 +219,26 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
+	csrfToken := form.New()
+
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/login.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
+		Token    string
 	}{
 		Title:    "login",
-		Messages: getMessages(r),
+		Messages: GetMessages(r),
+		Token:    csrfToken.Hash,
 	})
 }
 
 // LoginHandler form submit
 func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
+
+	r.ParseForm()
 
 	// get session
 	session, err := store.Get(r, "user-session")
@@ -298,8 +318,9 @@ func (c *Controller) Forgot(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
 	// TODO:
-	// validate/create session
-	// redirect to /user/{id}/picture
+	// create signup token
+	// email token
+
 }
 
 // Forbidden ...
@@ -319,7 +340,8 @@ func (c *Controller) Forbidden(w http.ResponseWriter, r *http.Request) {
 	tpl.ExecuteTemplate(w, "forbidden.gohtml", flashMessages)
 }
 
-func getMessages(r *http.Request) (messages []string) {
+// GetMessages returns list of flash messages
+func GetMessages(r *http.Request) (messages []string) {
 	messages = []string{}
 
 	// get session
