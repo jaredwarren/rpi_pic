@@ -34,14 +34,13 @@ func GetForm(key string) (f *Form, ok bool) {
 }
 
 // New return new form
-func New() (f *Form) {
+func New() string {
 	hash := getHash(32)
-	f = &Form{
+	forms[hash] = &Form{
 		Hash: hash,
 		Date: time.Now(),
 	}
-	forms[hash] = f
-	return
+	return hash
 }
 
 const letterBytes = "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"

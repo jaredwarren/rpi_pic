@@ -1,0 +1,26 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+    .main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .main form {
+        border: 1px solid lightgray;
+        padding: 6px;
+
+    }
+</style>
+{{end}}
+
+{{define "body"}}
+<div class="main">
+    <form class="pure-form pure-form-aligned" action="/user/login" method="post">
+        {{.Subject}}
+        {{.Body}}
+    </form>
+</div>
+{{end}}

@@ -22,22 +22,23 @@
         selectElement.addEventListener('keyup', (event) => {
             const link = document.getElementById("forgot-link");
             link.setAttribute("href", "/user/forgot?username" + selectElement.value)
-            // result.textContent = `You like ${event.target.value}`;
         });
     });
 
 </script>
-
 {{end}}
 
 {{define "body"}}
 <div class="main">
     <form class="pure-form pure-form-aligned" action="/user/login" method="post">
+        {{range $i, $message := .Messages}}
+            <div>{{$message}}</div>
+        {{end}}
         <fieldset>
-            <input type="hidden" name="token" value="{{.Token}}">
+            <input type="hidden" name="csrf_token" value="{{.Token}}">
             <div class="pure-control-group">
                 <label for="username">Username</label>
-                <input id="username" type="text" name="username" placeholder="Username" value="jlwarren1@gmail.com">
+                <input id="username" type="text" name="username" placeholder="Username" {{if .Username}}value="{{.Username}}"{{end}}>
             </div>
 
             <div class="pure-control-group">

@@ -64,6 +64,8 @@ func MountUserController(service *app.Service, ctrl *Controller) {
 
 	// forgot password
 	service.Mux.HandleFunc("/user/forgot", ctrl.Forgot).Methods("GET")
+
+	service.Mux.HandleFunc("/user/forbidden", ctrl.Forbidden).Methods("GET")
 }
 
 // TODO ...
@@ -89,7 +91,17 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csrfToken := form.New()
+	session, _ := store.Get(r, "user-session")
+
+	// validate token
+	dbToken := c.udb.GetToken(username)
+	if dbToken == "" {
+		fmt.Println("[E] no user token")
+		session.AddFlash("Not invited.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/forbidden", http.StatusFound)
+		return
+	}
 
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/register.html", "templates/base.html"))
@@ -101,10 +113,10 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 		CsrfToken string
 	}{
 		Title:     fmt.Sprintf("Register: %s", username),
-		Messages:  GetMessages(r),
+		Messages:  GetMessages(w, r),
 		Username:  username,
 		Token:     token,
-		CsrfToken: csrfToken.Hash,
+		CsrfToken: form.New(),
 	})
 }
 
@@ -115,54 +127,52 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
 	// get session
-	session, err := store.Get(r, "user-session")
-	if err != nil {
-		fmt.Println("[E] no session", err)
-		session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
-		return
-	}
-
-	username := r.FormValue("username")
-
-	// validate token
-	dbToken, _ := c.udb.GetToken(username)
-	formToken := r.FormValue("token")
-	if dbToken != formToken {
-		fmt.Println("[E] no token", err)
-		session.AddFlash("Unable to register.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
-		return
-	}
+	session, _ := store.Get(r, "user-session")
 
 	// verify user
+	username := r.FormValue("username")
 	if username == "" {
 		fmt.Println("Empty username")
 		session.AddFlash("Invalid username.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
 		return
 	}
 
-	// Check for duplicate username
-	user, err := c.udb.Find("username", username)
+	// get user from db
+	user, err := c.udb.Get(username)
 	if err != nil {
-		fmt.Println("[E] no user", err)
+		fmt.Println("[E] get user err", err)
 		session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
 		return
 	}
-	if user != nil {
-		// check if user is already registered
-		if user.Password != "" {
-			fmt.Printf("[E] user found, %s, %+v\n", err, user)
-			session.AddFlash("User already registered.")
-			http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// for now
-			return
-		}
-	} else {
-		user = &User{
-			Username: username,
-		}
+	if user == nil {
+		fmt.Println("[E] no user")
+		session.AddFlash("Unable to set password")
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		return
+	}
+
+	// check if user is already registered and is not resetting password
+	if user.Password != "" && user.Token == "" {
+		fmt.Printf("[E] user found, %s, %+v\n", err, user)
+		session.AddFlash("User already registered.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// TODO: add query
+		return
+	}
+
+	// check register token
+	formToken := r.FormValue("token")
+	if user.Token != formToken {
+		fmt.Println("[E] no token", user.Token, formToken)
+		session.AddFlash("Unable to register.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		return
 	}
 
 	// Verify password
@@ -171,26 +181,33 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if password1 == "" || password2 == "" || password1 != password2 {
 		fmt.Println("Passwords don't match, or are emtpy", password1, password2)
 		session.AddFlash("Passwords doesn't match.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
 		return
 	}
 
+	// hash password
 	hash, err := bcrypt.GenerateFromPassword([]byte(password1), bcrypt.MinCost)
 	if err != nil {
 		fmt.Println("failed to hash", err)
 		session.AddFlash("Invalid Password.")
+		session.Save(r, w)
 		http.Redirect(w, r, "/user/register", http.StatusFound)
 		return
 	}
 	user.Authenticated = true
 	user.Password = string(hash)
 
+	// delete register token
+	user.Token = ""
+
 	// Save user to db
-	_, err = c.udb.Save(user)
+	err = c.udb.Save(user)
 	if err != nil {
 		fmt.Println("[E] db save error", err)
 		session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+		session.Save(r, w)
+		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
 		return
 	}
 
@@ -199,16 +216,8 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	err = session.Save(r, w)
 	if err != nil {
 		fmt.Println("[E] session save error", err)
-		session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// for now
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
 		return
-	}
-
-	// if all is successful, delete token
-	err = c.udb.DeleteToken(dbToken)
-	if err != nil {
-		// not sure what to do here....
-		fmt.Println("[E] session save error", err)
 	}
 
 	// redirect
@@ -219,7 +228,8 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
-	csrfToken := form.New()
+	r.ParseForm()
+	username := r.FormValue("username")
 
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/login.html", "templates/base.html"))
@@ -227,10 +237,12 @@ func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
 		Title    string
 		Messages []string
 		Token    string
+		Username string
 	}{
 		Title:    "login",
-		Messages: GetMessages(r),
-		Token:    csrfToken.Hash,
+		Messages: GetMessages(w, r),
+		Token:    form.New(),
+		Username: username,
 	})
 }
 
@@ -239,14 +251,17 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
 	r.ParseForm()
+	username := r.FormValue("username")
 
 	// get session
 	session, err := store.Get(r, "user-session")
 	if err != nil {
-		fmt.Println("[E] session missing", err)
-		session.AddFlash("Login Failed, Please try again.")
-		http.Redirect(w, r, "/user/login", http.StatusFound) /// for now
-		return
+		// not sure if error is important here...
+		// fmt.Println("[E] session missing", err)
+		// session.AddFlash("Login Failed, Please try again.")
+		// session.Save(r, w)
+		// http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// TODO: add query
+		// return
 	}
 
 	// already logged in
@@ -257,18 +272,19 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user from db
-	username := r.FormValue("username")
-	user, err := c.udb.Find("username", username)
+	user, err := c.udb.Get(username)
 	if err != nil {
 		fmt.Println("[E] failed to get user", err)
 		session.AddFlash("Login Failed, Please try again.")
-		http.Redirect(w, r, "/user/login", http.StatusFound) /// for now
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
 		return
 	}
 	if user == nil {
-		fmt.Println("[E] no user", err)
+		fmt.Println("[E] no user")
 		session.AddFlash("Login Failed, Please try again.")
-		http.Redirect(w, r, "/user/login", http.StatusFound) /// for now
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
 		return
 	}
 
@@ -278,6 +294,7 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println("Invalid Password:", password, err)
 		session.AddFlash("Invalid Password")
+		session.Save(r, w)
 		http.Error(w, "Invalid Password", http.StatusBadRequest)
 		return
 	}
@@ -317,36 +334,90 @@ func (c *Controller) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) Forgot(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
-	// TODO:
-	// create signup token
-	// email token
+	r.ParseForm()
+	username := r.FormValue("username")
 
+	// get session
+	session, err := store.Get(r, "user-session")
+	if err != nil {
+		fmt.Println("[E] session missing", err)
+		session.AddFlash("Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		return
+	}
+
+	// already logged in
+	u, ok := session.Values["user"].(User)
+	if ok && u.Authenticated {
+		http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", u.ID), http.StatusFound)
+		return
+	}
+
+	// Get user from db
+	user, err := c.udb.Get(username)
+	if err != nil {
+		fmt.Println("[E] failed to get user", err)
+		session.AddFlash("Username not found, Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		return
+	}
+	if user == nil {
+		fmt.Println("[E] no user", err)
+		session.AddFlash("Username not found, Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		return
+	}
+
+	// for now just use the same "password"
+	hash, err := bcrypt.GenerateFromPassword([]byte("password1"), bcrypt.MinCost)
+	if err != nil {
+		fmt.Println("[E] token gen error", err)
+		session.AddFlash("Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		return
+	}
+	user.Token = string(hash)
+
+	// save user with token
+	err = c.udb.Save(user)
+	if err != nil {
+		fmt.Println("[E] user save error", err)
+		session.AddFlash("Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/user/register?username=%s&token=%s", user.Username, user.Token), http.StatusFound) /// TODO: add query
 }
 
 // Forbidden ...
 func (c *Controller) Forbidden(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, "user-session")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	flashMessages := session.Flashes()
-	err = session.Save(r, w)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	tpl.ExecuteTemplate(w, "forbidden.gohtml", flashMessages)
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/user/forbidden.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+	}{
+		Title:    "login",
+		Messages: GetMessages(w, r),
+	})
+	session, _ := store.Get(r, "user-session")
+	session.Save(r, w)
 }
 
 // GetMessages returns list of flash messages
-func GetMessages(r *http.Request) (messages []string) {
+func GetMessages(w http.ResponseWriter, r *http.Request) (messages []string) {
 	messages = []string{}
 
 	// get session
 	session, err := store.Get(r, "user-session")
 	if err != nil {
+		// if error assume no messages
 		return
 	} else if flashes := session.Flashes(); len(flashes) > 0 {
 		messages = make([]string, len(flashes))
@@ -354,5 +425,6 @@ func GetMessages(r *http.Request) (messages []string) {
 			messages[i] = f.(string)
 		}
 	}
+	session.Save(r, w)
 	return
 }

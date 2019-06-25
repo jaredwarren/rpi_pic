@@ -2,7 +2,6 @@ package user
 
 import (
 	"encoding/json"
-	"reflect"
 	"strconv"
 
 	bolt "go.etcd.io/bbolt"
@@ -43,77 +42,43 @@ type Store struct {
 }
 
 // Save ...
-func (us *Store) Save(u *User) (ID string, err error) {
-	err = us.DB.Update(func(tx *bolt.Tx) error {
+func (us *Store) Save(u *User) error {
+	return us.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("users"))
 
-		var id uint64
-		id, err = b.NextSequence()
-		ID = strconv.FormatUint(id, 10)
-		u.ID = ID
+		// look for exsisting user
+		var err error
+		v := b.Get([]byte(u.Username))
+		if len(v) > 0 {
+			err = json.Unmarshal(v, u)
+		} else {
+			// new user add ID
+			var id uint64
+			id, err = b.NextSequence()
+			u.ID = strconv.FormatUint(id, 10)
+		}
 
-		var buf []byte
-		buf, err = json.Marshal(u)
+		buf, err := json.Marshal(u)
 		if err != nil {
 			return err
 		}
 
-		return b.Put([]byte(u.ID), buf)
+		return b.Put([]byte(u.Username), buf)
 	})
-	return
-}
-
-// Update ...
-func (us *Store) Update(u *User) (err error) {
-	err = us.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("users"))
-
-		var buf []byte
-		buf, err = json.Marshal(u)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(u.ID), buf)
-	})
-	return
 }
 
 // Get ...
-func (us *Store) Get(ID string) (u *User, err error) {
+func (us *Store) Get(username string) (u *User, err error) {
 	u = &User{}
 	us.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("users"))
-		v := b.Get([]byte(ID))
-		if len(v) == 0 {
-			u = nil
-		} else {
+		v := b.Get([]byte(username))
+		if len(v) > 0 {
 			err = json.Unmarshal(v, u)
 		}
 		return nil
 	})
-	if u.ID == "" {
-		return nil, nil
-	}
-	return
-}
-
-// Find ...
-func (us *Store) Find(key, value string) (u *User, err error) {
-	u = &User{}
-	us.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("users"))
-		c := b.Cursor()
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			json.Unmarshal(v, u)
-			r := reflect.ValueOf(u)
-			f := reflect.Indirect(r).FieldByName(key)
-			if f.String() == value {
-				return nil
-			}
-		}
-		return nil
-	})
-	if u.ID == "" {
+	if u.Username == "" {
 		return nil, nil
 	}
 	return
@@ -140,37 +105,89 @@ func (us *Store) FetchAll() (users []*User, err error) {
 }
 
 // Delete ...
-func (us *Store) Delete(ID string) (err error) {
+func (us *Store) Delete(username string) (err error) {
 	err = us.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("users"))
-		return b.Delete([]byte(ID))
+		return b.Delete([]byte(username))
 	})
 	return
 }
 
 // GetToken ...
-func (us *Store) GetToken(key string) (v string, err error) {
+func (us *Store) GetToken(key string) string {
+	// find user
+	u := &User{}
 	us.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("token"))
-		v = string(b.Get([]byte(key)))
-		return nil
+		b := tx.Bucket([]byte("users"))
+		v := b.Get([]byte(key))
+		var err error
+		if len(v) > 0 {
+			err = json.Unmarshal(v, u)
+		}
+		return err
 	})
-	return
+	return u.Token
 }
 
 // SetToken ...
-func (us *Store) SetToken(key, value []byte) (err error) {
-	err = us.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("token"))
-		return b.Put(key, value)
+func (us *Store) SetToken(key, value string) (err error) {
+	u := &User{
+		Username: key,
+	}
+	return us.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("users"))
+
+		// find user
+		v := b.Get([]byte(key))
+		var err error
+		if len(v) > 0 {
+			err = json.Unmarshal(v, u)
+		} else {
+			// new user add ID
+			var id uint64
+			id, err = b.NextSequence()
+			u.ID = strconv.FormatUint(id, 10)
+		}
+
+		// set token
+		u.Token = value
+
+		// update user
+		var buf []byte
+		buf, err = json.Marshal(u)
+		if err != nil {
+			return err
+		}
+
+		return b.Put([]byte(u.Username), buf)
 	})
-	return
 }
 
 // DeleteToken ...
 func (us *Store) DeleteToken(key string) (err error) {
+	u := &User{}
 	return us.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("token"))
-		return b.Delete([]byte(key))
+		b := tx.Bucket([]byte("users"))
+
+		// find user
+		v := b.Get([]byte(key))
+		var err error
+		if len(v) > 0 {
+			err = json.Unmarshal(v, u)
+		} else {
+			return nil
+		}
+
+		// set token to string "0" value
+		u.Token = ""
+
+		// update user
+		var buf []byte
+		buf, err = json.Marshal(u)
+		if err != nil {
+			return err
+		}
+
+		return b.Put([]byte(u.Username), buf)
 	})
 }

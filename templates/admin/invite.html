@@ -20,7 +20,7 @@
 <div class="main">
     <form class="pure-form pure-form-aligned" action="/admin/user/invite" method="post">
         <fieldset>
-            <input type="hidden" name="token" value="{{.Token}}">
+            <input type="hidden" name="csrf_token" value="{{.Token}}">
             <div class="pure-control-group">
                 <label for="username">Email</label>
                 <input id="username" type="text" name="username" placeholder="Username" value="jlwarren1@gmail.com">

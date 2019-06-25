@@ -2,17 +2,44 @@ package admin
 
 import (
 	"bytes"
+	"encoding/gob"
 	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
 	"text/template"
 
+	"github.com/jaredwarren/rpi_pic/form"
+
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
 	"github.com/jaredwarren/rpi_pic/user"
-	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/gomail.v2"
 )
+
+// store will hold all session data
+var store *sessions.CookieStore
+
+// tpl holds all parsed templates
+var tpl *template.Template
+
+func init() {
+	authKeyOne := securecookie.GenerateRandomKey(64)
+	encryptionKeyOne := securecookie.GenerateRandomKey(32)
+
+	store = sessions.NewCookieStore(
+		authKeyOne,
+		encryptionKeyOne,
+	)
+
+	store.Options = &sessions.Options{
+		MaxAge:   60 * 15,
+		HttpOnly: true,
+	}
+
+	gob.Register(user.User{})
+}
 
 // Controller implements the home resource.
 type Controller struct {
@@ -33,43 +60,36 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	// admin list users
 	service.Mux.HandleFunc("/admin/user", admin(ctrl.ListUsers)).Methods("GET")
 	// admin user update
-	service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("POST")
-	// admin delete user
-	service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("DELETE")
+	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("POST")
+	// // admin delete user
+	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("DELETE")
 	// invite user to register
 	service.Mux.HandleFunc("/admin/user/invite", admin(ctrl.Invite)).Methods("GET")
 	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(admin(ctrl.InviteHandler))).Methods("POST")
 
 	// ## Picture management
 	// picture list
-	service.Mux.HandleFunc("/admin/picture", admin(ctrl.TODO)).Methods("GET")
-	// picture show in browser
-	service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("GET")
-	// display picture on device
-	service.Mux.HandleFunc("/admin/picture/{id}/display", admin(ctrl.TODO)).Methods("GET")
-	// picture delete
-	service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("DELETE")
+	// service.Mux.HandleFunc("/admin/picture", admin(ctrl.TODO)).Methods("GET")
+	// // picture show in browser
+	// service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("GET")
+	// // display picture on device
+	// service.Mux.HandleFunc("/admin/picture/{id}/display", admin(ctrl.TODO)).Methods("GET")
+	// // picture delete
+	// service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("DELETE")
 
-	// list picture tags
-	service.Mux.HandleFunc("/admin/picture/{id}/tag", admin(ctrl.TODO)).Methods("GET")
-	// tag picture
-	service.Mux.HandleFunc("/admin/picture/{pid}/tag/{tid}", admin(ctrl.TODO)).Methods("POST")
-	// delete picture tag
-	service.Mux.HandleFunc("/admin/picture/{pid}/tag/{tid}", admin(ctrl.TODO)).Methods("DELETE")
-	// list pictures with tag
-	service.Mux.HandleFunc("/admin/tag/{id}/picture", admin(ctrl.TODO)).Methods("GET")
+	// // list picture tags
+	// service.Mux.HandleFunc("/admin/picture/{id}/tag", admin(ctrl.TODO)).Methods("GET")
+	// // tag picture
+	// service.Mux.HandleFunc("/admin/picture/{pid}/tag/{tid}", admin(ctrl.TODO)).Methods("POST")
+	// // delete picture tag
+	// service.Mux.HandleFunc("/admin/picture/{pid}/tag/{tid}", admin(ctrl.TODO)).Methods("DELETE")
+	// // list pictures with tag
+	// service.Mux.HandleFunc("/admin/tag/{id}/picture", admin(ctrl.TODO)).Methods("GET")
 
-	// show settings
-	service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("GET")
-	// update settings
-	service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
-}
-
-// TODO ...
-func (c *Controller) TODO(w http.ResponseWriter, r *http.Request) {
-	msg := "TODO...." + r.URL.String()
-	fmt.Printf("TODO: %+v\n", r)
-	w.Write([]byte(msg))
+	// // show settings
+	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("GET")
+	// // update settings
+	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
 }
 
 // ListUsers ...
@@ -97,8 +117,8 @@ func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
 		Token    string
 	}{
 		Title:    "login",
-		Messages: user.GetMessages(r),
-		Token:    "",
+		Messages: user.GetMessages(w, r),
+		Token:    form.New(),
 	})
 }
 
@@ -106,14 +126,9 @@ func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
-	// // get session
-	// session, err := store.Get(r, "user-session")
-	// if err != nil {
-	// 	fmt.Println("[E] no session", err)
-	// 	session.AddFlash("Please try again.")
-	// 	http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
-	// 	return
-	// }
+	// get session
+	session, _ := store.Get(r, "user-session")
+	// ignore session error
 
 	r.ParseForm()
 	username := r.FormValue("username")
@@ -121,58 +136,51 @@ func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 	// verify user
 	if username == "" {
 		fmt.Println("Empty username")
-		// session.AddFlash("Invalid username.")
-		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		session.AddFlash("Invalid username.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/admin/user/invite", http.StatusFound)
 		return
 	}
 
 	// look for current user
 	// Check for duplicate username
-	u, err := c.udb.Find("username", username)
+	u, err := c.udb.Get(username)
 	if err != nil {
 		fmt.Println("[E] no user", err)
-		// session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		session.AddFlash("Please Try Again")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/admin/user/invite?username=%s", username), http.StatusFound)
 		return
 	}
 	if u != nil {
-		// check if user is already registered
-		if u.Password != "" {
-			fmt.Printf("[E] user found, %s, %+v\n", err, u)
-			// session.AddFlash("User already registered.")
-			http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// for now
-			return
-		}
+		// // What do I want to do if user is already registered?????
+		// session.AddFlash("Please Try Again")
+		// session.Save(r, w)
+		// http.Redirect(w, r, fmt.Sprintf("/admin/user/%s", u.ID), http.StatusFound)
 	} else {
 		u = &user.User{
 			Username: username,
 		}
 	}
 
-	// for now just use the same "password"
-	hash, err := bcrypt.GenerateFromPassword([]byte("password1"), bcrypt.MinCost)
-	if err != nil {
-		fmt.Println("[E] pass gen error", err)
-		// session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
-		return
-	}
-	c.udb.SetToken([]byte(username), hash)
+	// get random token
+	u.Token = form.New()
 
-	id, err := c.udb.Save(u)
+	err = c.udb.Save(u)
 	if err != nil {
 		fmt.Println("[E] user gen error", err)
-		// session.AddFlash("Please try again.")
-		http.Redirect(w, r, "/admin/user/invite", http.StatusFound) /// for now
+		session.AddFlash("Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/admin/user/invite?username=%s", username), http.StatusFound) /// for now
 		return
 	}
-	u.ID = id
 
 	subject := fmt.Sprintf("Message...")
 
-	// TODO: get current public url.....
-	url := fmt.Sprintf("http://localhost/user/register?username=%s&token=%s", username, hash)
+	// Generate register url
+	url := fmt.Sprintf("%s/user/register?username=%s&token=%s", r.Header.Get("Origin"), username, u.Token)
 
+	// Email template
 	emailTemplates := template.Must(template.ParseFiles("templates/email/invite.html", "templates/email/base.html"))
 	var tpl bytes.Buffer
 	emailTemplates.ExecuteTemplate(&tpl, "base", &struct {
@@ -182,11 +190,8 @@ func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	body := tpl.String()
 
-	// TODO: make template
-	// body := fmt.Sprintf(`Register Here: <a href="%s">Link</a>`, url)
-	// templates.
-
 	if c.service.Config.GetBool("email") {
+		panic("not working yet")
 		// test mail
 		m := gomail.NewMessage()
 		m.SetHeader("From", "alex@example.com")
@@ -269,12 +274,11 @@ func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 			Body     string
 		}{
 			Title:    "login",
-			Messages: user.GetMessages(r),
+			Messages: user.GetMessages(w, r),
 			Subject:  subject,
 			Body:     body,
 		})
 	}
-
 }
 
 // RunBash ...
