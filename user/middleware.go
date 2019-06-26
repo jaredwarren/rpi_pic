@@ -40,6 +40,7 @@ func Login(next http.HandlerFunc) http.HandlerFunc {
 		// get session
 		session, err := store.Get(r, "user-session")
 		if err != nil {
+			fmt.Printf("%+v\n", session)
 			fmt.Println("[E]", err)
 			session.AddFlash("Please try again.")
 			http.Redirect(w, r, "/user/login", http.StatusFound)
@@ -47,8 +48,9 @@ func Login(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// already logged in
-		u, ok := session.Values["user"].(User)
-		if !ok || !u.Authenticated {
+		username, ok := session.Values["user"].(string)
+		if !ok || username == "" {
+			fmt.Println("[E] user session missing")
 			session.AddFlash("Please try again.")
 			http.Redirect(w, r, "/user/login", http.StatusFound)
 			return

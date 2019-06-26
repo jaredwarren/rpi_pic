@@ -1,2 +1,3 @@
 *.db
 rpi_pic
+.vscode/

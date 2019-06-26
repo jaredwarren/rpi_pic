@@ -10,6 +10,7 @@ import (
 	"text/template"
 
 	"github.com/jaredwarren/rpi_pic/form"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -58,19 +59,26 @@ func NewAdminController(service *app.Service, udb *user.Store) *Controller {
 
 // MountAdminController "mounts" a Home resource controller on the given service.
 func MountAdminController(service *app.Service, ctrl *Controller) {
-	// admin list users
-	service.Mux.HandleFunc("/admin/user", admin(ctrl.ListUsers)).Methods("GET")
+	service.Mux.HandleFunc("/admin/login", ctrl.Login).Methods("GET")
+	service.Mux.HandleFunc("/admin/login", ctrl.LoginHandler).Methods("POST")
+	service.Mux.HandleFunc("/admin/logout", ctrl.LogoutHandler).Methods("GET")
 
-	// admin user update
-	service.Mux.HandleFunc("/admin/user/{username}", admin(ctrl.ShowUser)).Methods("GET")
+	// admin list users
+	service.Mux.HandleFunc("/admin/user", LoggedIn(ctrl.ListUsers)).Methods("GET")
+
+	// invite user to register
+	service.Mux.HandleFunc("/admin/user/invite", LoggedIn(ctrl.Invite)).Methods("GET")
+	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(LoggedIn(ctrl.InviteHandler))).Methods("POST")
+
+	service.Mux.HandleFunc("/admin/user/{username}/delete", LoggedIn(ctrl.DeleteUser)).Methods("GET")
+	service.Mux.HandleFunc("/admin/user/{username}", LoggedIn(ctrl.UpdateUser)).Methods("POST")
+
+	// admin user update, add this one last
+	service.Mux.HandleFunc("/admin/user/{username}", LoggedIn(ctrl.ShowUser)).Methods("GET")
 	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.ShowUser)).Methods("POST")
 
 	// admin delete user
 	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("DELETE")
-
-	// invite user to register
-	service.Mux.HandleFunc("/admin/user/invite", admin(ctrl.Invite)).Methods("GET")
-	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(admin(ctrl.InviteHandler))).Methods("POST")
 
 	// ## Picture management
 	// picture list
@@ -97,8 +105,106 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
 }
 
+// Login ...
+func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.String())
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/login.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+	}{
+		Title:    "User List",
+		Messages: user.GetMessages(w, r),
+	})
+}
+
+// LoginHandler ...
+func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("LoginHandler", r.URL.String())
+
+	r.ParseForm()
+	username := r.FormValue("username")
+
+	// get session, ignore session
+	session, _ := store.Get(r, "admin-session")
+
+	// already logged in
+	u, ok := session.Values["user"].(*user.User)
+	if ok && u != nil {
+		http.Redirect(w, r, fmt.Sprintf("/admin/picture"), http.StatusFound)
+		return
+	}
+
+	// Get user from db
+	u, err := c.udb.Get(username)
+	if err != nil {
+		fmt.Println("[E] failed to get user", err)
+		session.AddFlash("Login Failed, Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/admin/login?username=%s", username), http.StatusFound)
+		return
+	}
+	if u == nil {
+		fmt.Println("[E] no user")
+		session.AddFlash("Login Failed, Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/admin/login?username=%s", username), http.StatusFound)
+		return
+	}
+
+	if !u.Admin && !u.Root {
+		session.AddFlash("Access Denied.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		return
+	}
+
+	// Verify password
+	password := r.FormValue("password")
+	err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
+	if err != nil {
+		fmt.Println("Invalid Password:", password, err)
+		session.AddFlash("Invalid Password")
+		session.Save(r, w)
+		http.Error(w, "Invalid Password", http.StatusBadRequest)
+		return
+	}
+
+	// Save user session
+	session.Values["user"] = u
+	err = session.Save(r, w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", u.ID), http.StatusFound)
+}
+
+// LogoutHandler revokes authentication for a user
+func (c *Controller) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("LogoutHandler", r.URL.String())
+	session, err := store.Get(r, "admin-session")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	session.Values["user"] = nil
+	session.Options.MaxAge = -1
+
+	err = session.Save(r, w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
 // ListUsers ...
 func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ListUsers", r.URL.String())
 	// Check for duplicate username
 	messages := user.GetMessages(w, r)
 
@@ -125,6 +231,7 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 // ShowUser ...
 func (c *Controller) ShowUser(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ShowUser", r.URL.String())
 	// get session, ignore errors
 	session, _ := store.Get(r, "user-session")
 
@@ -167,9 +274,82 @@ func (c *Controller) ShowUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeleteUser ...
+func (c *Controller) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("DeleteUser", r.URL.String())
+	// get session, ignore errors
+	session, _ := store.Get(r, "user-session")
+
+	vars := mux.Vars(r)
+	username, ok := vars["username"]
+	if !ok {
+		fmt.Println("missing username")
+		session.AddFlash("Missing username")
+		session.Save(r, w)
+		http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+
+	u, err := c.udb.Get(username)
+	if err != nil {
+		fmt.Println("couldn't get user:" + err.Error())
+		// session.AddFlash("couldn't get user:" + err.Error())
+		// session.Save(r, w)
+		// http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+	if u == nil {
+		fmt.Println("User not found")
+		// session.AddFlash("User not found")
+		// session.Save(r, w)
+		// http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+
+	fmt.Println("TOOD: delete User", username)
+
+}
+
+// UpdateUser ...
+func (c *Controller) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("UpdateUser", r.URL.String())
+	// get session, ignore errors
+	session, _ := store.Get(r, "user-session")
+
+	r.ParseForm()
+
+	vars := mux.Vars(r)
+	username, ok := vars["username"]
+	if !ok {
+		fmt.Println("missing username")
+		session.AddFlash("Missing username")
+		session.Save(r, w)
+		http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+
+	u, err := c.udb.Get(username)
+	if err != nil {
+		fmt.Println("couldn't get user:" + err.Error())
+		// session.AddFlash("couldn't get user:" + err.Error())
+		// session.Save(r, w)
+		// http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+	if u == nil {
+		fmt.Println("User not found")
+		// session.AddFlash("User not found")
+		// session.Save(r, w)
+		// http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+
+	fmt.Println("TOOD: update User", username, r.Form)
+}
+
 // Invite ...
 func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.String())
+	fmt.Println("Invite:", r.URL.String())
 
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/admin/invite.html", "templates/base.html"))
@@ -186,7 +366,7 @@ func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
 
 // InviteHandler ...
 func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.String())
+	fmt.Println("InviteHandler:", r.URL.String())
 
 	// get session, ignore errors
 	session, _ := store.Get(r, "user-session")

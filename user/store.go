@@ -50,10 +50,8 @@ func (us *Store) Save(u *User) error {
 		// look for exsisting user
 		var err error
 		v := b.Get([]byte(u.Username))
-		if len(v) > 0 {
-			err = json.Unmarshal(v, u)
-		} else {
-			// new user add ID
+		// new user add ID
+		if len(v) == 0 {
 			var id uint64
 			id, err = b.NextSequence()
 			u.ID = strconv.FormatUint(id, 10)

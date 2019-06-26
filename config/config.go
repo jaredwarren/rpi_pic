@@ -38,6 +38,18 @@ func (us *Config) Set(key, value string) error {
 	})
 }
 
+// SetBool ...
+func (us *Config) SetBool(key string, value bool) error {
+	return us.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("config"))
+		if value {
+			return b.Put([]byte(key), []byte("true"))
+		} else {
+			return b.Delete([]byte(key))
+		}
+	})
+}
+
 // Get ...
 func (us *Config) Get(key string) string {
 	v := ""

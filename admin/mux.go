@@ -12,10 +12,10 @@ func TODO(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(msg))
 }
 
-// admin middleware require admin session
-func admin(next http.HandlerFunc) http.HandlerFunc {
+// LoggedIn middleware require admin session
+func LoggedIn(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("Logged connection from %s", r.RemoteAddr)
+		fmt.Printf("TODO: check for admin session %s\n", r.URL)
 		next.ServeHTTP(w, r)
 	}
 }
