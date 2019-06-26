@@ -2,6 +2,7 @@ package user
 
 import (
 	"encoding/json"
+	"reflect"
 	"strconv"
 
 	bolt "go.etcd.io/bbolt"
@@ -79,6 +80,28 @@ func (us *Store) Get(username string) (u *User, err error) {
 		return nil
 	})
 	if u.Username == "" {
+		return nil, nil
+	}
+	return
+}
+
+// Find ...
+func (us *Store) Find(key, value string) (u *User, err error) {
+	u = &User{}
+	us.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("users"))
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			json.Unmarshal(v, u)
+			r := reflect.ValueOf(u)
+			f := reflect.Indirect(r).FieldByName(key)
+			if f.String() == value {
+				return nil
+			}
+		}
+		return nil
+	})
+	if u.ID == "" {
 		return nil, nil
 	}
 	return

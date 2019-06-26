@@ -11,6 +11,7 @@ import (
 
 	"github.com/jaredwarren/rpi_pic/form"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
@@ -59,10 +60,14 @@ func NewAdminController(service *app.Service, udb *user.Store) *Controller {
 func MountAdminController(service *app.Service, ctrl *Controller) {
 	// admin list users
 	service.Mux.HandleFunc("/admin/user", admin(ctrl.ListUsers)).Methods("GET")
+
 	// admin user update
-	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("POST")
-	// // admin delete user
+	service.Mux.HandleFunc("/admin/user/{username}", admin(ctrl.ShowUser)).Methods("GET")
+	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.ShowUser)).Methods("POST")
+
+	// admin delete user
 	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("DELETE")
+
 	// invite user to register
 	service.Mux.HandleFunc("/admin/user/invite", admin(ctrl.Invite)).Methods("GET")
 	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(admin(ctrl.InviteHandler))).Methods("POST")
@@ -95,14 +100,71 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 // ListUsers ...
 func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 	// Check for duplicate username
+	messages := user.GetMessages(w, r)
+
 	users, err := c.udb.FetchAll()
 	if err != nil {
-		fmt.Println(err)
+		messages = append(messages, "error loading users:"+err.Error())
 		return
 	}
-	for _, user := range users {
-		fmt.Printf("%+v\n", user)
+
+	// TODO: count pictures
+
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/listUsers.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Users    []*user.User
+	}{
+		Title:    "User List",
+		Messages: messages,
+		Users:    users,
+	})
+}
+
+// ShowUser ...
+func (c *Controller) ShowUser(w http.ResponseWriter, r *http.Request) {
+	// get session, ignore errors
+	session, _ := store.Get(r, "user-session")
+
+	vars := mux.Vars(r)
+	username, ok := vars["username"]
+	if !ok {
+		fmt.Println("missing username")
+		session.AddFlash("Missing username")
+		session.Save(r, w)
+		http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
 	}
+
+	u, err := c.udb.Get(username)
+	if err != nil {
+		fmt.Println("couldn't get user:" + err.Error())
+		// session.AddFlash("couldn't get user:" + err.Error())
+		// session.Save(r, w)
+		// http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+	if u == nil {
+		fmt.Println("User not found")
+		// session.AddFlash("User not found")
+		// session.Save(r, w)
+		// http.Redirect(w, r, "/admin/user", http.StatusFound)
+		return
+	}
+
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/user.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		User     *user.User
+	}{
+		Title:    username,
+		Messages: user.GetMessages(w, r),
+		User:     u,
+	})
 }
 
 // Invite ...
@@ -126,9 +188,8 @@ func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 
-	// get session
+	// get session, ignore errors
 	session, _ := store.Get(r, "user-session")
-	// ignore session error
 
 	r.ParseForm()
 	username := r.FormValue("username")
@@ -153,10 +214,11 @@ func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if u != nil {
-		// // What do I want to do if user is already registered?????
-		// session.AddFlash("Please Try Again")
-		// session.Save(r, w)
-		// http.Redirect(w, r, fmt.Sprintf("/admin/user/%s", u.ID), http.StatusFound)
+		// What do I want to do if user is already registered?????
+		session.AddFlash("Please Try Again")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/admin/user/%s", u.ID), http.StatusFound)
+		return
 	} else {
 		u = &user.User{
 			Username: username,

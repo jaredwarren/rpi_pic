@@ -1,0 +1,49 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+    .main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .main table {
+        border: 1px solid lightgray;
+        padding: 6px;
+
+    }
+</style>
+
+<script>
+    function copy(){
+        var copyText = document.getElementById("registerLink");
+        copyText.select();
+        document.execCommand("copy");
+    }
+</script>
+{{end}}
+
+{{define "body"}}
+<div class="main">
+    {{range $i, $message := .Messages}}
+        <div>{{$message}}</div>
+    {{end}}
+    <table class="pure-table">
+        <thead>
+            <tr>
+                <td>ID</td>
+                <td>Username</td>
+                <td>Register Link</td>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{.User.ID}}</td>
+                <td><a href="/admin/user/{{.User.ID}}">{{.User.Username}}</a></td>
+                <td><input id="registerLink" type="text" value="/user/register?username={{.User.Username}}&token={{.User.Token}}"> <button onclick="copy()" class="pure-button">&#128203;</button></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{{end}}
