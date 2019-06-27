@@ -37,22 +37,22 @@ func withLogging(next http.HandlerFunc) http.HandlerFunc {
 // Login valid user
 func Login(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Login:", r.URL.String())
 		// get session
 		session, err := store.Get(r, "user-session")
 		if err != nil {
-			fmt.Printf("%+v\n", session)
-			fmt.Println("[E]", err)
+			fmt.Println("  [E]", err)
 			session.AddFlash("Please try again.")
-			http.Redirect(w, r, "/user/login", http.StatusFound)
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 
 		// already logged in
 		username, ok := session.Values["user"].(string)
 		if !ok || username == "" {
-			fmt.Println("[E] user session missing")
+			fmt.Println("  [E] user session missing")
 			session.AddFlash("Please try again.")
-			http.Redirect(w, r, "/user/login", http.StatusFound)
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 
@@ -63,15 +63,19 @@ func Login(next http.HandlerFunc) http.HandlerFunc {
 // CsrfForm validate form with csrf token
 func CsrfForm(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("csrf:", r.URL.String())
 		r.ParseForm()
 
 		// validate session token
 		tokenHash := r.FormValue("csrf_token")
 		_, ok := form.GetForm(tokenHash)
 		if !ok {
-			fmt.Println("[E] form expired")
+			fmt.Println("  [E] form expired:", tokenHash)
 			// session.AddFlash("Login Failed, Please try again.")
-			http.Redirect(w, r, r.URL.Path, http.StatusFound) /// hopefully this doesn't create a loop
+
+			// TODO: how to detect recirect loops!!!!!
+
+			http.Redirect(w, r, r.URL.String(), http.StatusFound) /// hopefully this doesn't create a loop
 			return
 		}
 

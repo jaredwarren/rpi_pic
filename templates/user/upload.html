@@ -1,0 +1,48 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+    .main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .main form {
+        border: 1px solid lightgray;
+        padding: 6px;
+
+    }
+</style>
+
+<script>
+    // document.addEventListener("DOMContentLoaded", function () {
+    //     const selectElement = document.getElementById("username");
+
+    //     selectElement.addEventListener('keyup', (event) => {
+    //         const link = document.getElementById("forgot-link");
+    //         link.setAttribute("href", "/forgot?username" + selectElement.value)
+    //     });
+    // });
+
+</script>
+{{end}}
+
+{{define "body"}}
+<div class="main">
+    <form class="pure-form pure-form-aligned" action="/pictures/upload?csrf_token={{.CsrfToken}}" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
+        <fieldset>
+            <legend>Upload Picture</legend>
+            <div class="pure-control-group">
+                <label for="username">File</label>
+                <input type="file" name="picture[]" multiple>
+            </div>
+
+            <div class="pure-controls">
+                <button type="submit" class="pure-button pure-button-primary">Upload</button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+{{end}}

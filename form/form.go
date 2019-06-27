@@ -33,6 +33,12 @@ func GetForm(key string) (f *Form, ok bool) {
 	return
 }
 
+// Check return stored form
+func Check(key string) (f *Form, ok bool) {
+	f, ok = forms[key]
+	return
+}
+
 // New return new form
 func New() string {
 	hash := getHash(32)

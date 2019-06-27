@@ -21,7 +21,7 @@
 
         selectElement.addEventListener('keyup', (event) => {
             const link = document.getElementById("forgot-link");
-            link.setAttribute("href", "/user/forgot?username" + selectElement.value)
+            link.setAttribute("href", "/forgot?username" + selectElement.value)
         });
     });
 
@@ -30,12 +30,12 @@
 
 {{define "body"}}
 <div class="main">
-    <form class="pure-form pure-form-aligned" action="/user/login" method="post">
+    <form class="pure-form pure-form-aligned" action="/login" method="post">
         {{range $i, $message := .Messages}}
             <div>{{$message}}</div>
         {{end}}
         <fieldset>
-            <input type="hidden" name="csrf_token" value="{{.Token}}">
+            <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
             <div class="pure-control-group">
                 <label for="username">Username</label>
                 <input id="username" type="text" name="username" placeholder="Username" {{if .Username}}value="{{.Username}}"{{end}}>
@@ -47,7 +47,7 @@
             </div>
             <div class="pure-control-group">
                 <label>&nbsp;</label>
-                <a id="forgot-link" href="/user/forgot">Forgot Password</a>
+                <a id="forgot-link" href="/forgot">Forgot Password</a>
             </div>
 
             <div class="pure-controls">

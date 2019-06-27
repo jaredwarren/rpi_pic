@@ -12,7 +12,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/jaredwarren/rpi_pic/app"
-	"github.com/jaredwarren/rpi_pic/user"
 )
 
 // Controller implements the home resource.
@@ -26,17 +25,18 @@ func NewPictureController(service *app.Service) *Controller {
 
 // MountPictureController "mounts" a Home resource controller on the given service.
 func MountPictureController(service *app.Service, ctrl *Controller) {
-	//
-	service.Mux.HandleFunc("/picture/{id}", user.Login(ctrl.Update)).Methods("POST")
 
-	// list all pictures
-	service.Mux.HandleFunc("/picture", user.Login(ctrl.ListAll)).Methods("GET")
+	// //
+	// service.Mux.HandleFunc("/picture/{id}", user.Login(ctrl.Update)).Methods("POST")
 
-	// show picture in browser
-	service.Mux.HandleFunc("/picture/{id}", user.Login(ctrl.Show)).Methods("GET")
+	// // list all pictures
+	// service.Mux.HandleFunc("/picture", user.Login(ctrl.ListAll)).Methods("GET")
 
-	// show user pictures
-	service.Mux.HandleFunc("/user/{id}/picture", user.Login(ctrl.ListUser)).Methods("GET")
+	// // show picture in browser
+	// service.Mux.HandleFunc("/picture/{id}", user.Login(ctrl.Show)).Methods("GET")
+
+	// // show user pictures
+	// service.Mux.HandleFunc("/user/{id}/picture", user.Login(ctrl.ListUser)).Methods("GET")
 }
 
 // ListAll shows all pictures

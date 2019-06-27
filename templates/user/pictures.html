@@ -8,10 +8,15 @@
         margin-top: 20px;
     }
 
-    .main form {
+    .main div {
         border: 1px solid lightgray;
         padding: 6px;
 
+    }
+    .delete{
+        text-decoration: none;
+        color: red;
+        font-weight: bold;
     }
 </style>
 
@@ -22,6 +27,32 @@
 
 {{define "body"}}
 <div class="main">
-    PICS
+    <div>
+        <h1>My Pictures</h1>
+        <a href="/pictures/upload" class="pure-button">Upload</a>
+        <br>
+        <table class="pure-table">
+            <thead>
+                <tr>
+                    <td>Preview</td>
+                    <td>Name</td>
+                    <td>Last Modified</td>
+                    <td>Size</td>
+                    <td>Delete</td>
+                </tr>
+            </thead>
+            <tbody>
+                {{range $i, $pic := .Pictures}}
+                    <tr>
+                        <td><a href="{{$pic.URL}}" target="_blank"><img src="{{$pic.URL}}" style="width: 50px; height:auto;"></a></td>
+                        <td>{{$pic.Name}}</td>
+                        <td>{{$pic.ModTime}}</td>
+                        <td>{{$pic.Size}}</td>
+                        <td style="text-align: center;"><a href="/pictures/delete?file={{$pic.Path}}&csrf_token={{$.CsrfToken}}" class="delete" onclick="return confirm('Are you sure you want to delete this picture?\nNote: this cannot be undone!')">&#10007;</a></td>
+                    </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
 </div>
 {{end}}

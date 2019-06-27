@@ -3,13 +3,17 @@ package user
 import (
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
 	"github.com/jaredwarren/rpi_pic/form"
+	"github.com/jaredwarren/rpi_pic/picture"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -21,6 +25,7 @@ var tpl *template.Template
 
 func init() {
 	// authKeyOne := securecookie.GenerateRandomKey(64)
+	// TODO: store these as env vars
 	authKeyOne := []byte("nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7SnLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S")
 	// fmt.Printf(":authKeyOne:%s\n", authKeyOne)
 	// encryptionKeyOne := securecookie.GenerateRandomKey(32)
@@ -55,26 +60,113 @@ func NewUserController(service *app.Service, udb *Store) *Controller {
 // MountUserController "mounts" a Home resource controller on the given service.
 func MountUserController(service *app.Service, ctrl *Controller) {
 	// user register form
-	service.Mux.HandleFunc("/user/register", ctrl.Register).Methods("GET")
-	// submit user register form
-	service.Mux.HandleFunc("/user/register", CsrfForm(ctrl.RegisterHandler)).Methods("POST")
+	service.Mux.HandleFunc("/register", ctrl.Register).Methods("GET")
+	service.Mux.HandleFunc("/register", CsrfForm(ctrl.RegisterHandler)).Methods("POST")
 
 	// user login form
-	service.Mux.HandleFunc("/user/login", ctrl.Login).Methods("GET")
-	// submit user login
-	service.Mux.HandleFunc("/user/login", CsrfForm(ctrl.LoginHandler)).Methods("POST")
-
-	service.Mux.HandleFunc("/user/logout", ctrl.LogoutHandler).Methods("GET")
+	service.Mux.HandleFunc("/login", ctrl.Login).Methods("GET")
+	service.Mux.HandleFunc("/login", CsrfForm(ctrl.LoginHandler)).Methods("POST")
+	service.Mux.HandleFunc("/logout", ctrl.LogoutHandler).Methods("GET")
 
 	// forgot password
-	service.Mux.HandleFunc("/user/forgot", ctrl.Forgot).Methods("GET")
+	service.Mux.HandleFunc("/forgot", ctrl.Forgot).Methods("GET")
 
-	service.Mux.HandleFunc("/user/forbidden", ctrl.Forbidden).Methods("GET")
+	// other
+	service.Mux.HandleFunc("/forbidden", ctrl.Forbidden).Methods("GET")
+
 	// pictures
-	// http://localhost:8081/user/jlwarren1@gmail.com/picture
-	service.Mux.HandleFunc("/user/{username}/picture", Login(ctrl.ListPictures)).Methods("GET")
-	service.Mux.HandleFunc("/user/{username}/picture/upload", Login(ctrl.UploadPicture)).Methods("GET")
-	service.Mux.HandleFunc("/user/{username}/picture/upload", CsrfForm(Login(ctrl.UploadPictureHandler))).Methods("POST")
+	service.Mux.HandleFunc("/pictures", Login(ctrl.ListPictures)).Methods("GET")
+	service.Mux.HandleFunc("/pictures/upload", Login(ctrl.UploadPicture)).Methods("GET")
+	service.Mux.HandleFunc("/pictures/delete", CsrfForm(Login(ctrl.DeletePicture))).Methods("GET")
+	service.Mux.HandleFunc("/pictures/upload", CsrfForm(Login(ctrl.UploadPictureHandler))).Methods("POST")
+	service.Mux.HandleFunc("/pictures/{username}/{file}", Login(ctrl.ServePicture)).Methods("GET")
+}
+
+// DeletePicture ...
+func (c *Controller) DeletePicture(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("DeletePicture:", r.URL.String())
+
+	// get user session
+	session, _ := store.Get(r, "user-session")
+	username, _ := session.Values["user"].(string)
+	if username == "" {
+		session.AddFlash("redirect", "/pictures")
+		session.AddFlash("Please Login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	r.ParseForm()
+	file := r.FormValue("file")
+	if file == "" {
+		session.AddFlash("Access Denied.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/pictures", http.StatusNotFound)
+		return
+	}
+
+	// make sure user owns file
+	if !strings.Contains(file, username) {
+		session.AddFlash("Access Denied.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/forbidden", http.StatusNotFound)
+		return
+	}
+
+	// delete the file
+	err := os.Remove(file)
+	if err != nil {
+		session.AddFlash("Cannot delete file")
+		session.Save(r, w)
+		http.Redirect(w, r, "/pictures", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/pictures", http.StatusFound)
+}
+
+// ServePicture ...
+func (c *Controller) ServePicture(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ServePicture:", r.URL.String())
+
+	// get user session
+	session, _ := store.Get(r, "user-session")
+	sessionUsername, _ := session.Values["user"].(string)
+	if sessionUsername == "" {
+		session.AddFlash("redirect", r.URL.String())
+		session.AddFlash("Please Login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	// get path username
+	vars := mux.Vars(r)
+	username, _ := vars["username"]
+	if username == "" {
+		session.AddFlash("Access Denied.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/forbidden", http.StatusNotFound)
+		return
+	}
+
+	// make sure user has access to image
+	if sessionUsername != username {
+		session.AddFlash("Access Denied.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/forbidden", http.StatusNotFound)
+		return
+	}
+
+	// find file, or default
+	filename := "." + r.URL.String()
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) || info.IsDir() {
+		filename = "pictures/broken.png"
+	}
+
+	http.ServeFile(w, r, filename)
 }
 
 // ListPictures ...
@@ -82,23 +174,40 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ListPictures:", r.URL.String())
 
 	// get user session
-	session, err := store.Get(r, "user-session")
-	if err != nil {
-		fmt.Println("  se:", err)
-	}
-	u, ok := session.Values["user"].(string)
-	fmt.Printf(" -- > %+v\n", u)
-	if !ok {
+	session, _ := store.Get(r, "user-session")
+	username, _ := session.Values["user"].(string)
+	if username == "" {
+		session.AddFlash("redirect", "/pictures")
 		session.AddFlash("Please Login.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login"), http.StatusFound)
+		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 
-	os.MkdirAll(fmt.Sprintf("pictures/%s", filepath.Clean(u)), os.ModePerm)
+	// init user picture path
+	picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(username))
+	os.MkdirAll(picturePath, os.ModePerm)
 
-	// TODO: get lis of all my photos
-	pictures := []string{}
+	// picture url base
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = fmt.Sprintf("http://%s/", r.Host)
+	}
+
+	// get lis of all user photos
+	pictures := []*picture.Picture{}
+	filepath.Walk(picturePath, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			pictures = append(pictures, &picture.Picture{
+				Name:    info.Name(),
+				Path:    path,
+				URL:     fmt.Sprintf("%s%s", origin, path),
+				ModTime: info.ModTime().Format("Mon Jan _2 15:04:05 2006"),
+				Size:    info.Size(),
+			})
+		}
+		return nil
+	})
 
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/pictures.html", "templates/base.html"))
@@ -106,11 +215,13 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		Title     string
 		Messages  []string
 		CsrfToken string
-		Pictures  []string
+		Username  string
+		Pictures  []*picture.Picture
 	}{
 		Title:     "My Photo",
 		Messages:  GetMessages(w, r),
 		CsrfToken: form.New(),
+		Username:  username,
 		Pictures:  pictures,
 	})
 }
@@ -119,16 +230,29 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) UploadPicture(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("UploadPicture:", r.URL.String())
 
+	// get user session
+	session, _ := store.Get(r, "user-session")
+	username, _ := session.Values["user"].(string)
+	if username == "" {
+		session.AddFlash("redirect", "/pictures/upload")
+		session.AddFlash("Please Login.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/login"), http.StatusFound)
+		return
+	}
+
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/upload.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
 		Title     string
 		Messages  []string
 		CsrfToken string
+		Username  string
 	}{
 		Title:     "Upload Photo",
 		Messages:  GetMessages(w, r),
 		CsrfToken: form.New(),
+		Username:  username,
 	})
 }
 
@@ -138,56 +262,112 @@ func (c *Controller) UploadPictureHandler(w http.ResponseWriter, r *http.Request
 
 	// get session
 	session, _ := store.Get(r, "user-session")
-	// already logged in
-	u, ok := session.Values["user"].(string)
-	if ok {
+	username, _ := session.Values["user"].(string)
+	if username == "" {
+		session.AddFlash("redirect", "/pictures/upload")
 		session.AddFlash("Please Login.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login"), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login"), http.StatusFound)
 		return
 	}
 
-	os.MkdirAll(fmt.Sprintf("pictures/%s", filepath.Clean(u)), os.ModePerm)
+	// 32 MB files max.
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "file too big", http.StatusBadRequest)
+		return
+	}
 
-	// TODO: save image
+	// make sure user pic dir exists
+	picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(username))
+	os.MkdirAll(picturePath, os.ModePerm)
+
+	// process each file
+	m := r.MultipartForm
+	if m == nil {
+		session.AddFlash("form data error")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/pictures/upload"), http.StatusFound)
+		return
+	}
+	for _, fileHeader := range m.File["picture[]"] {
+		// get pictures
+		file, err := fileHeader.Open()
+		if err != nil {
+			session.AddFlash("Invalid file:" + fileHeader.Filename)
+			continue
+		}
+		defer file.Close()
+
+		fileBytes, err := ioutil.ReadAll(file)
+		if err != nil {
+			session.AddFlash("Invalid file:" + fileHeader.Filename)
+			continue
+		}
+
+		// check file type, detectcontenttype only needs the first 512 bytes
+		filetype := http.DetectContentType(fileBytes)
+		switch filetype {
+		case "image/jpeg", "image/jpg":
+		case "image/gif", "image/png":
+			break
+		// TODO: allow videos?????
+		default:
+			session.AddFlash("Invalid file Type:" + fileHeader.Filename)
+			continue
+		}
+
+		// clean file name
+		cleanFileName := filepath.Clean(fileHeader.Filename)
+		fullPath := filepath.Join(picturePath, cleanFileName)
+
+		// write file
+		newFile, err := os.Create(fullPath)
+		if err != nil {
+			session.AddFlash("Can't write file:" + fileHeader.Filename)
+			continue
+		}
+		defer newFile.Close()
+		if _, err := newFile.Write(fileBytes); err != nil || newFile.Close() != nil {
+			session.AddFlash("Can't write file:" + fileHeader.Filename)
+			continue
+		}
+	}
+	session.Save(r, w)
 
 	// redirect back to picture list
-	http.Redirect(w, r, fmt.Sprintf("/user/login"), http.StatusFound)
-
-}
-
-// TODO ...
-func TODO(w http.ResponseWriter, r *http.Request) {
-	msg := "TODO..." + r.URL.String()
-	fmt.Println(msg)
-	w.Write([]byte(msg))
+	http.Redirect(w, r, "/pictures", http.StatusFound)
 }
 
 // Register form
 func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Register:", r.URL.String())
 
+	// get new session
+	session, _ := store.Get(r, "user-session")
+
 	username := r.URL.Query().Get("username")
 	if username == "" {
-		w.Write([]byte("invalid username"))
+		session.AddFlash("Invalid username.")
+		session.Save(r, w)
+		http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		return
 	}
 
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		w.Write([]byte("invalid token"))
+		session.AddFlash("Invalid token.")
+		session.Save(r, w)
+		http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		return
 	}
-
-	session, _ := store.Get(r, "user-session")
 
 	// validate token
 	dbToken := c.udb.GetToken(username)
 	if dbToken == "" {
-		fmt.Println("[E] no user token")
 		session.AddFlash("Not invited.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/forbidden", http.StatusFound)
+		http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		return
 	}
 
@@ -220,10 +400,9 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// verify user
 	username := r.FormValue("username")
 	if username == "" {
-		fmt.Println("Empty username")
 		session.AddFlash("Invalid username.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, "/forbidden", http.StatusFound)
 		return
 	}
 
@@ -233,14 +412,14 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("[E] get user err", err)
 		session.AddFlash("Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, "/forbidden", http.StatusFound)
 		return
 	}
 	if user == nil {
 		fmt.Println("[E] no user")
 		session.AddFlash("Unable to set password")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, "/forbidden", http.StatusFound)
 		return
 	}
 
@@ -249,7 +428,7 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[E] user found, %s, %+v\n", err, user)
 		session.AddFlash("User already registered.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 
@@ -259,7 +438,7 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("[E] no token", user.Token, formToken)
 		session.AddFlash("Unable to register.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, "/register", http.StatusFound)
 		return
 	}
 
@@ -270,7 +449,7 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Passwords don't match, or are emtpy", password1, password2)
 		session.AddFlash("Passwords doesn't match.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, "/register", http.StatusFound)
 		return
 	}
 
@@ -280,7 +459,7 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("failed to hash", err)
 		session.AddFlash("Invalid Password.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound)
+		http.Redirect(w, r, "/register", http.StatusFound)
 		return
 	}
 	user.Password = string(hash)
@@ -294,7 +473,7 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("[E] db save error", err)
 		session.AddFlash("Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/user/register", http.StatusFound) /// TODO: add query
+		http.Redirect(w, r, "/register", http.StatusFound)
 		return
 	}
 
@@ -303,14 +482,12 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	err = session.Save(r, w)
 	if err != nil {
 		fmt.Println("[E] session save error", err)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 
-	fmt.Printf("  -> OK %+v\n", user)
-
 	// redirect
-	http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", user.Username), http.StatusFound)
+	http.Redirect(w, r, "/pictures", http.StatusFound)
 }
 
 // Login form
@@ -323,69 +500,53 @@ func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/login.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
-		Title    string
-		Messages []string
-		Token    string
-		Username string
+		Title     string
+		Messages  []string
+		CsrfToken string
+		Username  string
 	}{
-		Title: "login",
-		// Messages: GetMessages(w, r),
-		Token:    form.New(),
-		Username: username,
+		Title:     "login",
+		Messages:  GetMessages(w, r),
+		CsrfToken: form.New(),
+		Username:  username,
 	})
 }
 
 // LoginHandler form submit
-//
-//
-//
 func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("LoginHandler:", r.URL.String())
 
+	// get session
+	session, _ := store.Get(r, "user-session")
+
 	r.ParseForm()
 	username := r.FormValue("username")
-
-	// get session
-	session, err := store.Get(r, "user-session")
-	fmt.Printf("  -> %+v\n", session)
-	if err != nil {
-		fmt.Println("  s:", err)
+	if username == "" {
+		session.AddFlash("Login Failed, Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
+		return
 	}
-	// if err != nil {
-	// 	session, err = store.New(r, "user-session")
-	// 	if err != nil {
-	// 		// not sure if error is important here...
-	// 		fmt.Println("[E] session missing", err)
-	// 		session.AddFlash("Login Failed, Please try again.")
-	// 		session.Save(r, w)
-	// 		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound) /// TODO: add query
-	// 		return
-	// 	}
-	// }
 
 	// already logged in
-	u, ok := session.Values["user"].(string)
-	if ok && u != "" {
-		http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", u), http.StatusFound)
+	sessionUsername, _ := session.Values["user"].(string)
+	if sessionUsername != "" && sessionUsername == username {
+		http.Redirect(w, r, "/pictures", http.StatusFound)
 		return
 	}
 
 	// Get user from db
 	user, err := c.udb.Get(username)
 	if err != nil {
-		panic(err)
-		fmt.Println("[E] failed to get user", err)
 		session.AddFlash("Login Failed, Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 	if user == nil {
-		panic("err")
-		fmt.Println("[E] no user")
 		session.AddFlash("Login Failed, Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 
@@ -393,86 +554,81 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		panic(err)
-		fmt.Println("Invalid Password:", password, err)
 		session.AddFlash("Invalid Password")
 		session.Save(r, w)
 		http.Error(w, "Invalid Password", http.StatusBadRequest)
 		return
 	}
 
+	// get redirects if any
+	var redirects []string
+	if flashes := session.Flashes(""); len(flashes) > 0 {
+		redirects = make([]string, len(flashes))
+		for i, f := range flashes {
+			redirects[i] = f.(string)
+		}
+	}
+	if len(redirects) > 0 {
+		// maybe I want the last one....
+		http.Redirect(w, r, redirects[0], http.StatusFound)
+	}
+
 	// Save user session
 	session.Values["user"] = user.Username
 	err = session.Save(r, w)
 	if err != nil {
-		panic(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fmt.Printf("  -> %+v\n", session)
 
-	http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", user.Username), http.StatusFound)
+	http.Redirect(w, r, "/pictures", http.StatusFound)
 }
 
 // LogoutHandler revokes authentication for a user
 func (c *Controller) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("LogoutHandler:", r.URL.String())
 
-	session, err := store.Get(r, "user-session")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	session, _ := store.Get(r, "user-session")
 	session.Values["user"] = ""
 	session.Options.MaxAge = -1
 
-	err = session.Save(r, w)
+	err := session.Save(r, w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 // Forgot form submit
 func (c *Controller) Forgot(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Forgot:", r.URL.String())
 
+	// get session
+	session, _ := store.Get(r, "user-session")
+
 	r.ParseForm()
 	username := r.FormValue("username")
-
-	// get session
-	session, err := store.Get(r, "user-session")
-	if err != nil {
-		fmt.Println("[E] session missing", err)
-		session.AddFlash("Please try again.")
+	if username == "" {
+		session.AddFlash("Username not found, Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
-		return
-	}
-
-	// already logged in
-	u, ok := session.Values["user"].(string)
-	if ok {
-		http.Redirect(w, r, fmt.Sprintf("/user/%s/picture", u), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 
 	// Get user from db
 	user, err := c.udb.Get(username)
 	if err != nil {
-		fmt.Println("[E] failed to get user", err)
 		session.AddFlash("Username not found, Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 	if user == nil {
 		fmt.Println("[E] no user", err)
 		session.AddFlash("Username not found, Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 
@@ -482,7 +638,7 @@ func (c *Controller) Forgot(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("[E] token gen error", err)
 		session.AddFlash("Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 	user.Token = string(hash)
@@ -493,11 +649,11 @@ func (c *Controller) Forgot(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("[E] user save error", err)
 		session.AddFlash("Please try again.")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/user/login?username=%s", username), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/login?username=%s", username), http.StatusFound)
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/user/register?username=%s&token=%s", user.Username, user.Token), http.StatusFound) /// TODO: add query
+	http.Redirect(w, r, fmt.Sprintf("/register?username=%s&token=%s", user.Username, user.Token), http.StatusFound) /// TODO: add query
 }
 
 // Forbidden ...

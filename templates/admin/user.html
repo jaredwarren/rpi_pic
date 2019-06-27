@@ -51,7 +51,7 @@
                     </td>
                     <td>
                         {{if .User.Token}}
-                        <input id="registerLink" disabled type="text" value="/user/register?username={{.User.Username}}&token={{.User.Token}}">
+                        <input id="registerLink" disabled type="text" value="/register?username={{.User.Username}}&token={{.User.Token}}">
                         <button onclick="copy()" type="button" class="pure-button">&#128203;</button>
                         {{else}}
                             ----

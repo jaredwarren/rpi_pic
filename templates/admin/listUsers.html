@@ -48,7 +48,7 @@
                 <td style="text-align: center;">{{if $user.Admin}}&#10003;{{else}}&#10007;{{end}}</td>
                 <td>
                     {{if $user.Token}}
-                        <input id="registerLink" disabled type="text" value="/user/register?username={{$user.Username}}&token={{$user.Token}}"> <button onclick="copy()" class="pure-button">&#128203;</button>
+                        <input id="registerLink" disabled type="text" value="/register?username={{$user.Username}}&token={{$user.Token}}"> <button onclick="copy()" class="pure-button">&#128203;</button>
                     {{else}}
                         ----
                     {{end}}
