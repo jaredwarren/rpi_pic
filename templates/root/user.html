@@ -1,0 +1,75 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+    .main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .main table {
+        border: 1px solid lightgray;
+        padding: 6px;
+
+    }
+</style>
+
+<script>
+    function copy(){
+        var copyText = document.getElementById("registerLink");
+        copyText.disabled = false;
+        copyText.select();
+        document.execCommand("copy");
+        copyText.disabled = true;
+    }
+</script>
+{{end}}
+
+{{define "body"}}
+<div class="main">
+    {{range $i, $message := .Messages}}
+        <div>{{$message}}</div>
+    {{end}}
+    <form action="/admin/user/{{.User.Username}}" method="POST">
+        <table class="pure-table">
+            <thead>
+                <tr>
+                    <td>ID</td>
+                    <td>Username</td>
+                    <td>Admin</td>
+                    <td>Register Link</td>
+                    <td>Delete</td>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{.User.ID}}</td>
+                    <td>{{.User.Username}}</td>
+                    <td style="text-align: center;">
+                        <input type="checkbox" name="admin" value="true" {{if .User.Admin}}checked="checked"{{end}}>
+                    </td>
+                    <td>
+                        {{if .User.Token}}
+                        <input id="registerLink" disabled type="text" value="/register?username={{.User.Username}}&token={{.User.Token}}">
+                        <button onclick="copy()" type="button" class="pure-button">&#128203;</button>
+                        {{else}}
+                            ----
+                        {{end}}
+                    </td>
+                    <td><a href="/admin/user/{{.User.Username}}/delete" onclick="return confirm('Are you sure you want to delete this user?')" class="pure-button">&#10007;</a></td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <th>
+                    <td colspan="3">
+                    </td>
+                    <td>
+                        <button type="submit" class="pure-button">Update</button>
+                    </td>
+                </th>
+            </tfoot>
+        </table>
+    </form>
+</div>
+{{end}}

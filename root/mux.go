@@ -3,39 +3,53 @@ package root
 import (
 	"fmt"
 	"net/http"
-
-	"github.com/gorilla/mux"
 )
 
-// TODO ...
-func TODO(w http.ResponseWriter, r *http.Request) {
-	msg := "TODO..." + r.URL.String()
-	fmt.Println(msg)
-	w.Write([]byte(msg))
-}
-
-// root middleware require root session
-func root(next http.HandlerFunc) http.HandlerFunc {
+// Root middleware require root session
+func (c *Controller) Root(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("Logged connection from %s", r.RemoteAddr)
+		fmt.Println("Root:", r.URL.String())
+		// get session
+		session, err := c.cookieStore.Get(r, "user-session")
+		if err != nil {
+			fmt.Println("  [E]", err)
+			session.AddFlash("Please try again.")
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		// not logged in
+		username, _ := session.Values["user"].(string)
+		if username == "" {
+			fmt.Println("  [E] user session missing")
+			session.AddFlash("Please log in again.")
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		// get user from db
+		user, err := c.udb.Get(username)
+		if err != nil {
+			fmt.Println("  [E] user error", err)
+			session.AddFlash("Please try again.")
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		if user == nil {
+			fmt.Println("  [E] user missing")
+			session.AddFlash("Please try again.")
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		// verify credentials
+		if !user.Root {
+			fmt.Println("  [E] user not root")
+			session.AddFlash("Access Denied.")
+			http.Redirect(w, r, "/forbidden", http.StatusFound)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	}
-}
-
-// MountRoot ...
-func MountRoot(router *mux.Router) {
-	// root menu
-	router.HandleFunc("/root", root(TODO)).Methods("GET")
-
-	router.HandleFunc("/root/restart", root(TODO)).Methods("GET")
-	router.HandleFunc("/root/update", root(TODO)).Methods("GET")
-
-	// list all user (including admins)
-	router.HandleFunc("/root/user", root(TODO)).Methods("GET")
-	// show user info
-	router.HandleFunc("/root/user/{id}", root(TODO)).Methods("GET")
-	// update/create user
-	router.HandleFunc("/root/user/{id}", root(TODO)).Methods("POST")
-	// delete user
-	router.HandleFunc("/root/user/{id}", root(TODO)).Methods("DELETE")
 }

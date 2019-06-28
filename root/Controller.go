@@ -1,4 +1,4 @@
-package admin
+package root
 
 import (
 	"bytes"
@@ -14,12 +14,12 @@ import (
 	"github.com/jaredwarren/rpi_pic/picture"
 
 	"github.com/jaredwarren/rpi_pic/form"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
 	"github.com/jaredwarren/rpi_pic/user"
-	"gopkg.in/gomail.v2"
 )
 
 // Controller implements the home resource.
@@ -29,8 +29,28 @@ type Controller struct {
 	cookieStore *sessions.CookieStore
 }
 
-// NewAdminController creates a home controller.
-func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sessions.CookieStore) *Controller {
+// NewRootController creates a home controller.
+func NewRootController(service *app.Service, udb *user.Store, cookieStore *sessions.CookieStore) *Controller {
+	// force create root user
+	rootUser := &user.User{
+		Username: "root",
+		Admin:    true,
+		Root:     true,
+		Token:    "",
+	}
+	// TODO: get password from env
+	hash, err := bcrypt.GenerateFromPassword([]byte("root"), bcrypt.MinCost)
+	if err != nil {
+		panic(err)
+	}
+	rootUser.Password = string(hash)
+
+	// Save user to db
+	err = udb.Save(rootUser)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Controller{
 		udb:         udb,
 		service:     service,
@@ -38,22 +58,26 @@ func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sess
 	}
 }
 
-// MountAdminController "mounts" a Home resource controller on the given service.
-func MountAdminController(service *app.Service, ctrl *Controller) {
-	service.Mux.HandleFunc("/admin", ctrl.Admin(ctrl.Home)).Methods("GET")
+// MountRootController "mounts" a Home resource controller on the given service.
+func MountRootController(service *app.Service, ctrl *Controller) {
+	service.Mux.HandleFunc("/root", ctrl.Root(ctrl.Home)).Methods("GET")
+
+	// service.Mux.HandleFunc("/root/login", ctrl.Login).Methods("GET")
+	// service.Mux.HandleFunc("/root/login", ctrl.LoginHandler).Methods("POST")
+	// service.Mux.HandleFunc("/root/logout", ctrl.LogoutHandler).Methods("GET")
 
 	// admin list users
-	service.Mux.HandleFunc("/admin/user", ctrl.Admin(ctrl.ListUsers)).Methods("GET")
+	service.Mux.HandleFunc("/root/user", ctrl.Root(ctrl.ListUsers)).Methods("GET")
 
 	// invite user to register
-	service.Mux.HandleFunc("/admin/user/invite", ctrl.Admin(ctrl.Invite)).Methods("GET")
-	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(ctrl.Admin(ctrl.InviteHandler))).Methods("POST")
+	// service.Mux.HandleFunc("/root/user/invite", ctrl.Root(ctrl.Invite)).Methods("GET")
+	// service.Mux.HandleFunc("/root/user/invite", user.CsrfForm(ctrl.Root(ctrl.InviteHandler))).Methods("POST")
 
-	service.Mux.HandleFunc("/admin/user/{username}/delete", user.CsrfForm(ctrl.Admin(ctrl.DeleteUser))).Methods("GET")
-	service.Mux.HandleFunc("/admin/user/{username}", ctrl.Admin(ctrl.UpdateUser)).Methods("POST")
+	service.Mux.HandleFunc("/root/user/{username}/delete", user.CsrfForm(ctrl.Root(ctrl.DeleteUser))).Methods("GET")
+	service.Mux.HandleFunc("/root/user/{username}", ctrl.Root(ctrl.UpdateUser)).Methods("POST")
 
 	// admin user update, add this one last
-	service.Mux.HandleFunc("/admin/user/{username}", ctrl.Admin(ctrl.ShowUser)).Methods("GET")
+	service.Mux.HandleFunc("/root/user/{username}", ctrl.Root(ctrl.ShowUser)).Methods("GET")
 	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.ShowUser)).Methods("POST")
 
 	// admin delete user
@@ -61,7 +85,7 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 
 	// ## Picture management
 	// picture list
-	service.Mux.HandleFunc("/admin/picture", ctrl.Admin(ctrl.ListPictures)).Methods("GET")
+	service.Mux.HandleFunc("/root/picture", ctrl.Root(ctrl.ListPictures)).Methods("GET")
 	// // picture show in browser
 	// service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("GET")
 	// // display picture on device
@@ -84,11 +108,47 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
 }
 
+// ListUsers ...
+func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ListUsers", r.URL.String())
+	session, _ := c.cookieStore.Get(r, "user-session")
+	// Check for duplicate username
+	messages := user.GetMessages(session)
+
+	users, err := c.udb.FetchAll()
+	if err != nil {
+		messages = append(messages, "error loading users:"+err.Error())
+		return
+	}
+
+	// TODO: count pictures
+	for _, user := range users {
+		picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(user.Username))
+		files, _ := ioutil.ReadDir(picturePath)
+		user.PicCount = len(files)
+	}
+
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/root/listUsers.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title     string
+		CsrfToken string
+		Messages  []string
+		Users     []*user.User
+	}{
+		Title:     "User List",
+		Messages:  messages,
+		Users:     users,
+		CsrfToken: form.New(),
+	})
+	session.Save(r, w)
+}
+
 // ListPictures ...
 func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ListPictures", r.URL.String())
-	session, _ := c.cookieStore.Get(r, "user-session")
 	// Check for duplicate username
+	session, _ := c.cookieStore.Get(r, "user-session")
 	messages := user.GetMessages(session)
 
 	users, err := c.udb.FetchAll()
@@ -149,49 +209,13 @@ func (c *Controller) Home(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 	session, _ := c.cookieStore.Get(r, "user-session")
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/home.html", "templates/base.html"))
+	templates := template.Must(template.ParseFiles("templates/root/home.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
 	}{
 		Title:    "Home",
 		Messages: user.GetMessages(session),
-	})
-	session.Save(r, w)
-}
-
-// ListUsers ...
-func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("ListUsers", r.URL.String())
-	session, _ := c.cookieStore.Get(r, "user-session")
-	// Check for duplicate username
-	messages := user.GetMessages(session)
-
-	users, err := c.udb.FetchAll()
-	if err != nil {
-		messages = append(messages, "error loading users:"+err.Error())
-		return
-	}
-
-	// TODO: count pictures
-	for _, user := range users {
-		picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(user.Username))
-		files, _ := ioutil.ReadDir(picturePath)
-		user.PicCount = len(files)
-	}
-
-	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/listUsers.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		CsrfToken string
-		Messages  []string
-		Users     []*user.User
-	}{
-		Title:     "User List",
-		Messages:  messages,
-		Users:     users,
-		CsrfToken: form.New(),
 	})
 	session.Save(r, w)
 }
@@ -239,7 +263,6 @@ func (c *Controller) ShowUser(w http.ResponseWriter, r *http.Request) {
 		Messages: user.GetMessages(session),
 		User:     u,
 	})
-	session.Save(r, w)
 }
 
 // DeleteUser ...
@@ -313,185 +336,6 @@ func (c *Controller) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println("TOOD: update User", username, r.Form)
-}
-
-// Invite ...
-func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Invite:", r.URL.String())
-	session, _ := c.cookieStore.Get(r, "user-session")
-
-	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/invite.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title    string
-		Messages []string
-		Token    string
-	}{
-		Title:    "login",
-		Messages: user.GetMessages(session),
-		Token:    form.New(),
-	})
-	session.Save(r, w)
-}
-
-// InviteHandler ...
-func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("InviteHandler:", r.URL.String())
-
-	// get session, ignore errors
-	session, _ := c.cookieStore.Get(r, "user-session")
-
-	r.ParseForm()
-	username := r.FormValue("username")
-
-	// verify user
-	if username == "" {
-		fmt.Println("Empty username")
-		session.AddFlash("Invalid username.")
-		session.Save(r, w)
-		http.Redirect(w, r, "/admin/user/invite", http.StatusFound)
-		return
-	}
-
-	// look for current user
-	// Check for duplicate username
-	u, err := c.udb.Get(username)
-	if err != nil {
-		fmt.Println("[E] no user", err)
-		session.AddFlash("Please Try Again")
-		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/admin/user/invite?username=%s", username), http.StatusFound)
-		return
-	}
-	if u != nil {
-		// What do I want to do if user is already registered?????
-		session.AddFlash("Please Try Again")
-		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/admin/user/%s", u.ID), http.StatusFound)
-		return
-	} else {
-		u = &user.User{
-			Username: username,
-		}
-	}
-
-	// get random token
-	u.Token = form.New()
-
-	err = c.udb.Save(u)
-	if err != nil {
-		fmt.Println("[E] user gen error", err)
-		session.AddFlash("Please try again.")
-		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/admin/user/invite?username=%s", username), http.StatusFound) /// for now
-		return
-	}
-
-	subject := fmt.Sprintf("Message...")
-
-	// Generate register url
-	url := fmt.Sprintf("%s/user/register?username=%s&token=%s", r.Header.Get("Origin"), username, u.Token)
-
-	// Email template
-	emailTemplates := template.Must(template.ParseFiles("templates/email/invite.html", "templates/email/base.html"))
-	var tpl bytes.Buffer
-	emailTemplates.ExecuteTemplate(&tpl, "base", &struct {
-		URL string
-	}{
-		URL: url,
-	})
-	body := tpl.String()
-
-	if c.service.Config.GetBool("email") {
-		panic("not working yet")
-		// test mail
-		m := gomail.NewMessage()
-		m.SetHeader("From", "alex@example.com")
-		m.SetHeader("To", "jlwarren1@gmail.com")
-		// m.SetAddressHeader("Cc", "dan@example.com", "Dan")
-		m.SetHeader("Subject", subject)
-		// m.SetBody("text/html", "Hello <b>Bob</b> and <i>Cora</i>!")
-		m.SetBody("text/html", body)
-
-		// cmd := exec.Command("/usr/sbin/sendmail", "-t")
-		// var stdOutBuf bytes.Buffer
-		// var stdErrBuf bytes.Buffer
-		// cmd.Stdout = &stdOutBuf
-		// cmd.Stderr = &stdErrBuf
-
-		// pw, err := cmd.StdinPipe()
-		// if err != nil {
-		// 	fmt.Println("EEE:", err)
-		// 	return
-		// }
-
-		// err = cmd.Run()
-		// if err != nil {
-		// 	fmt.Println("EEE:", err)
-		// 	return
-		// }
-
-		// stdOut := strings.TrimSuffix(stdOutBuf.String(), "\n")
-		// stdErr := strings.TrimSuffix(stdErrBuf.String(), "\n")
-
-		// var errs [3]error
-		// _, errs[0] = m.WriteTo(pw)
-		// errs[1] = pw.Close()
-		// errs[2] = cmd.Wait()
-		// for _, err = range errs {
-		// 	if err != nil {
-		// 		fmt.Println("...", err)
-		// 		// return
-		// 	}
-		// }
-
-		// fmt.Println("OUt:", stdOut)
-		// fmt.Println("ERR:", stdErr)
-
-		// fromEmail := "test@example.com"
-		// toEmail := "jlwarren1@gmail.com"
-		// msg := "Subject: Sendmail Using Go"
-
-		// sendmail := exec.Command("/usr/sbin/sendmail", "-f", fromEmail, toEmail)
-		// stdin, err := sendmail.StdinPipe()
-		// if err != nil {
-		// 	panic(err)
-		// }
-
-		// stdout, err := sendmail.StdoutPipe()
-		// if err != nil {
-		// 	panic(err)
-		// }
-
-		// sendmail.Start()
-		// stdin.Write([]byte(msg))
-		// stdin.Close()
-		// sentBytes, _ := ioutil.ReadAll(stdout)
-		// sendmail.Wait()
-
-		// fmt.Println("Send Command Output\n")
-		// fmt.Println(string(sentBytes))
-
-		// TODO: figure out how to send mail on pi
-		// TODO: make sure port:25 is open
-		// (echo >/dev/tcp/localhost/25) &>/dev/null && echo "TCP port 25 opened" || echo "TCP port 25 closed"
-		http.Redirect(w, r, "/admin/user", http.StatusFound)
-	} else {
-		// parse every time to make updates easier, and save memory
-		templates := template.Must(template.ParseFiles("templates/admin/inviteEmail.html", "templates/base.html"))
-		templates.ExecuteTemplate(w, "base", &struct {
-			Title    string
-			Messages []string
-			Subject  string
-			Body     string
-		}{
-			Title:    "login",
-			Messages: user.GetMessages(session),
-			Subject:  subject,
-			Body:     body,
-		})
-		session.Save(r, w)
-	}
 }
 
 // RunBash ...

@@ -34,12 +34,12 @@ func withLogging(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// Login valid user
-func Login(next http.HandlerFunc) http.HandlerFunc {
+// LoggedIn valid user
+func (c *Controller) LoggedIn(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Login:", r.URL.String())
 		// get session
-		session, err := store.Get(r, "user-session")
+		session, err := c.cookieStore.Get(r, "user-session")
 		if err != nil {
 			fmt.Println("  [E]", err)
 			session.AddFlash("Please try again.")

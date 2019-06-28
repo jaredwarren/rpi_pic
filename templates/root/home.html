@@ -1,0 +1,79 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+    .main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .main form {
+        border: 1px solid lightgray;
+        padding: 6px;
+
+    }
+    .delete{
+        text-decoration: none;
+        color: red;
+        font-weight: bold;
+    }
+</style>
+
+<script>
+
+</script>
+{{end}}
+
+{{define "body"}}
+{{template "nav" .}}
+<div class="main">
+    <form class="pure-form pure-form-aligned">
+        <fieldset>
+            <legend>Root Option</legend>
+            <div class="pure-control-group">
+                <a href="/admin/user/invite" class="pure-button pure-button-primary"><i class="fas fa-user-plus"></i> Invite</a>
+                <span class="pure-form-message-inline">Invite user to upload pictures.</span>
+            </div>
+
+            <div class="pure-control-group">
+                <a href="/admin/user" class="pure-button pure-button-primary"><i class="fas fa-users"></i> Users</a>
+                <span class="pure-form-message-inline">Manage user access.</span>
+            </div>
+
+            <div class="pure-control-group">
+                <a href="/admin/picture" class="pure-button pure-button-primary" ><i class="fas fa-images"></i> Images</a>
+                <span class="pure-form-message-inline">Manage Images.</span>
+            </div>
+        </fieldset>
+    </form>
+</div>
+{{end}}
+ 
+{{define "nav"}}
+<style>
+    nav{
+        padding: 5px;
+        border-bottom: 1px solid grey;
+        position:sticky;
+        top: 0;
+        right: 0;
+        left: 0;
+        display: flex;
+        align-items: stretch;
+    }
+    nav * {
+        margin: 4px;
+    }
+    .spacer{
+        width: 100%;
+    }
+</style>
+<nav>
+    <!-- <a href="/pictures/upload" class="pure-button">Upload</a>
+    -->
+    <a href="/pictures/upload" class="pure-button"><i class="fa fa-upload"></i> Upload</a> 
+    <span class="spacer">&nbsp;</span>
+    <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>
+</nav>
+{{end}}
