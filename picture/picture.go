@@ -12,6 +12,7 @@ type Picture struct {
 	Type    string
 	ModTime string
 	Size    int64
+	Owner   string
 }
 
 func fileExists(filename string) (bool, os.FileInfo) {

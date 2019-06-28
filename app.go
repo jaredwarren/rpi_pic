@@ -21,6 +21,8 @@ func main() {
 
 	service := app.New("Shipping")
 
+	service.Mux.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
+
 	uc := user.NewUserController(service, userStore)
 	user.MountUserController(service, uc)
 

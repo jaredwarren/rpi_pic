@@ -8,7 +8,7 @@
         margin-top: 20px;
     }
 
-    .main form {
+    .main div {
         border: 1px solid lightgray;
         padding: 6px;
 
@@ -17,7 +17,13 @@
 {{end}}
 
 {{define "body"}}
-{{range $i, $message := .}}
-<div>{{$message}}</div>
-{{end}}
+
+<div class="main">
+    <form class="pure-form pure-form-aligned" action="/login" method="post">
+        {{range $i, $message := .Messages}}
+        <div>{{$message}}</div>
+        {{end}}
+    </form>
+</div>
+
 {{end}}

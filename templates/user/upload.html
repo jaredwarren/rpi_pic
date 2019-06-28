@@ -13,36 +13,79 @@
         padding: 6px;
 
     }
+
+    .upload-btn-wrapper {
+        position: relative;
+        overflow: hidden;
+        display: inline-block;
+    }
+
+
+    .upload-btn-wrapper input[type=file] {
+        font-size: 100px;
+        position: absolute;
+        left: 0;
+        top: 0;
+        opacity: 0;
+    }
 </style>
 
 <script>
-    // document.addEventListener("DOMContentLoaded", function () {
-    //     const selectElement = document.getElementById("username");
-
-    //     selectElement.addEventListener('keyup', (event) => {
-    //         const link = document.getElementById("forgot-link");
-    //         link.setAttribute("href", "/forgot?username" + selectElement.value)
-    //     });
-    // });
-
 </script>
 {{end}}
 
 {{define "body"}}
+{{template "nav" .}}
 <div class="main">
-    <form class="pure-form pure-form-aligned" action="/pictures/upload?csrf_token={{.CsrfToken}}" method="POST" enctype="multipart/form-data">
+    <form class="pure-form pure-form-stacked" action="/pictures/upload?csrf_token={{.CsrfToken}}" method="POST"
+        enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
         <fieldset>
             <legend>Upload Picture</legend>
             <div class="pure-control-group">
-                <label for="username">File</label>
-                <input type="file" name="picture[]" multiple>
+                <div class="upload-btn-wrapper">
+                    <button type="button" class="button-secondary pure-button" onclick="document.getElementById('upfile').click();"><i class="far fa-images"></i> Select files</button>
+                    <input id="upfile" type="file" name="picture[]" multiple />
+                </div>
             </div>
 
+            <br>
             <div class="pure-controls">
-                <button type="submit" class="pure-button pure-button-primary">Upload</button>
+                <button type="submit" class="pure-button pure-button-primary" style="width: 132px;"><i class="fa fa-upload"></i>
+                    Upload</button>
             </div>
         </fieldset>
     </form>
 </div>
+{{end}}
+
+
+{{define "nav"}}
+<style>
+    nav {
+        padding: 5px;
+        border-bottom: 1px solid grey;
+        position: sticky;
+        top: 0;
+        right: 0;
+        left: 0;
+        display: flex;
+        align-items: stretch;
+    }
+
+    nav * {
+        margin: 4px;
+    }
+
+    .spacer {
+        width: 100%;
+    }
+</style>
+<nav>
+    <!-- <a href="/pictures/upload" class="pure-button">Upload</a>
+    -->
+    <a href="/pictures" class="pure-button"><i class="fas fa-portrait"></i> My Pictures</a>
+    <span class="spacer">&nbsp;</span>
+    <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>
+</nav>
 {{end}}

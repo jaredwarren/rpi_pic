@@ -350,7 +350,7 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 	if username == "" {
 		session.AddFlash("Invalid username.")
 		session.Save(r, w)
-		http.Redirect(w, r, r.URL.String(), http.StatusFound)
+		http.Redirect(w, r, "/forbidden", http.StatusFound)
 		return
 	}
 
@@ -358,7 +358,7 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 	if token == "" {
 		session.AddFlash("Invalid token.")
 		session.Save(r, w)
-		http.Redirect(w, r, r.URL.String(), http.StatusFound)
+		http.Redirect(w, r, "/forbidden", http.StatusFound)
 		return
 	}
 
@@ -367,7 +367,7 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 	if dbToken == "" {
 		session.AddFlash("Not invited.")
 		session.Save(r, w)
-		http.Redirect(w, r, r.URL.String(), http.StatusFound)
+		http.Redirect(w, r, "/forbidden", http.StatusFound)
 		return
 	}
 
@@ -666,7 +666,7 @@ func (c *Controller) Forbidden(w http.ResponseWriter, r *http.Request) {
 		Title    string
 		Messages []string
 	}{
-		Title:    "login",
+		Title:    "Error",
 		Messages: GetMessages(w, r),
 	})
 	session, _ := store.Get(r, "user-session")

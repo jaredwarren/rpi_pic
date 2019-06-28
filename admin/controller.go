@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/jaredwarren/rpi_pic/picture"
 
 	"github.com/jaredwarren/rpi_pic/form"
 	"golang.org/x/crypto/bcrypt"
@@ -59,6 +64,8 @@ func NewAdminController(service *app.Service, udb *user.Store) *Controller {
 
 // MountAdminController "mounts" a Home resource controller on the given service.
 func MountAdminController(service *app.Service, ctrl *Controller) {
+	service.Mux.HandleFunc("/admin", LoggedIn(ctrl.Home)).Methods("GET")
+
 	service.Mux.HandleFunc("/admin/login", ctrl.Login).Methods("GET")
 	service.Mux.HandleFunc("/admin/login", ctrl.LoginHandler).Methods("POST")
 	service.Mux.HandleFunc("/admin/logout", ctrl.LogoutHandler).Methods("GET")
@@ -70,7 +77,7 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	service.Mux.HandleFunc("/admin/user/invite", LoggedIn(ctrl.Invite)).Methods("GET")
 	service.Mux.HandleFunc("/admin/user/invite", user.CsrfForm(LoggedIn(ctrl.InviteHandler))).Methods("POST")
 
-	service.Mux.HandleFunc("/admin/user/{username}/delete", LoggedIn(ctrl.DeleteUser)).Methods("GET")
+	service.Mux.HandleFunc("/admin/user/{username}/delete", user.CsrfForm(LoggedIn(ctrl.DeleteUser))).Methods("GET")
 	service.Mux.HandleFunc("/admin/user/{username}", LoggedIn(ctrl.UpdateUser)).Methods("POST")
 
 	// admin user update, add this one last
@@ -82,7 +89,7 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 
 	// ## Picture management
 	// picture list
-	// service.Mux.HandleFunc("/admin/picture", admin(ctrl.TODO)).Methods("GET")
+	service.Mux.HandleFunc("/admin/picture", LoggedIn(ctrl.ListPictures)).Methods("GET")
 	// // picture show in browser
 	// service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("GET")
 	// // display picture on device
@@ -105,17 +112,91 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
 }
 
+// ListPictures ...
+func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ListPictures", r.URL.String())
+	// Check for duplicate username
+	messages := user.GetMessages(w, r)
+
+	users, err := c.udb.FetchAll()
+	if err != nil {
+		messages = append(messages, "error loading users:"+err.Error())
+		return
+	}
+
+	// picture url base
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = fmt.Sprintf("http://%s/", r.Host)
+	}
+
+	pictures := []*picture.Picture{}
+
+	// TODO: count pictures
+	for _, user := range users {
+		picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(user.Username))
+
+		// get lis of all user photos
+		filepath.Walk(picturePath, func(path string, info os.FileInfo, err error) error {
+			if !info.IsDir() {
+				pictures = append(pictures, &picture.Picture{
+					Name:    info.Name(),
+					Path:    path,
+					URL:     fmt.Sprintf("%s%s", origin, path),
+					ModTime: info.ModTime().Format("Mon Jan _2 15:04:05 2006"),
+					Size:    info.Size(),
+					Owner:   user.Username,
+				})
+			}
+			return nil
+		})
+
+		files, _ := ioutil.ReadDir(picturePath)
+		user.PicCount = len(files)
+	}
+
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/listPictures.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title     string
+		CsrfToken string
+		Messages  []string
+		Pictures  []*picture.Picture
+	}{
+		Title:     "User List",
+		Messages:  messages,
+		CsrfToken: form.New(),
+		Pictures:  pictures,
+	})
+}
+
+// Home ...
+func (c *Controller) Home(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.String())
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/home.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+	}{
+		Title:    "Home",
+		Messages: user.GetMessages(w, r),
+	})
+}
+
 // Login ...
 func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/admin/login.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
-		Title    string
-		Messages []string
+		Title     string
+		Messages  []string
+		CsrfToken string
 	}{
-		Title:    "User List",
-		Messages: user.GetMessages(w, r),
+		Title:     "User List",
+		Messages:  user.GetMessages(w, r),
+		CsrfToken: form.New(),
 	})
 }
 
@@ -215,17 +296,24 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: count pictures
+	for _, user := range users {
+		picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(user.Username))
+		files, _ := ioutil.ReadDir(picturePath)
+		user.PicCount = len(files)
+	}
 
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/admin/listUsers.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
-		Title    string
-		Messages []string
-		Users    []*user.User
+		Title     string
+		CsrfToken string
+		Messages  []string
+		Users     []*user.User
 	}{
-		Title:    "User List",
-		Messages: messages,
-		Users:    users,
+		Title:     "User List",
+		Messages:  messages,
+		Users:     users,
+		CsrfToken: form.New(),
 	})
 }
 

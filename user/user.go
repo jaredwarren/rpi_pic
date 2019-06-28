@@ -8,4 +8,5 @@ type User struct {
 	Root     bool
 	Admin    bool
 	Token    string
+	PicCount int
 }
