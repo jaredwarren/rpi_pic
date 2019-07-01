@@ -30,26 +30,36 @@
 <div class="main">
     <form class="pure-form pure-form-aligned">
         <fieldset>
-            <legend>Root Option</legend>
+            <legend>Admin Option</legend>
             <div class="pure-control-group">
                 <a href="/admin/user/invite" class="pure-button pure-button-primary"><i class="fas fa-user-plus"></i> Invite</a>
                 <span class="pure-form-message-inline">Invite user to upload pictures.</span>
             </div>
-
+            
             <div class="pure-control-group">
                 <a href="/admin/user" class="pure-button pure-button-primary"><i class="fas fa-users"></i> Users</a>
                 <span class="pure-form-message-inline">Manage user access.</span>
             </div>
-
+            
             <div class="pure-control-group">
                 <a href="/admin/picture" class="pure-button pure-button-primary" ><i class="fas fa-images"></i> Images</a>
                 <span class="pure-form-message-inline">Manage Images.</span>
             </div>
-
+            
             <div class="pure-control-group">
                 <a href="/admin/config" class="pure-button pure-button-primary"><i class="fas fa-cogs"></i> Config</a>
                 <span class="pure-form-message-inline">Change config settings.</span>
             </div>
+            <legend>Root Option</legend>
+            <div class="pure-control-group">
+                <a href="/root/restart" class="pure-button pure-button-primary" onclick="return confirm('Are you sure you want to restart?')"><i class="fas fa-power-off"></i> Restart</a>
+                <span class="pure-form-message-inline">Restart Device.</span>
+            </div>
+            <div class="pure-control-group">
+                <a href="/root/update" class="pure-button pure-button-primary"><i class="fas fa-sync"></i> Update</a>
+                <span class="pure-form-message-inline">Restart Device.</span>
+            </div>
+
         </fieldset>
     </form>
 </div>

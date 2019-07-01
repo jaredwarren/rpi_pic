@@ -50,6 +50,7 @@ func MountUserController(service *app.Service, ctrl *Controller) {
 	service.Mux.HandleFunc("/forbidden", ctrl.Forbidden).Methods("GET")
 
 	// pictures
+	service.Mux.HandleFunc("/picture", ctrl.LoggedIn(ctrl.ListPictures)).Methods("GET")
 	service.Mux.HandleFunc("/pictures", ctrl.LoggedIn(ctrl.ListPictures)).Methods("GET")
 	service.Mux.HandleFunc("/pictures/upload", ctrl.LoggedIn(ctrl.UploadPicture)).Methods("GET")
 	service.Mux.HandleFunc("/pictures/delete", CsrfForm(ctrl.LoggedIn(ctrl.DeletePicture))).Methods("GET")
@@ -105,33 +106,36 @@ func (c *Controller) DeletePicture(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) ServePicture(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ServePicture:", r.URL.String())
 
-	// get user session
+	// get session
 	session, _ := c.cookieStore.Get(r, "user-session")
-	sessionUsername, _ := session.Values["user"].(string)
-	if sessionUsername == "" {
-		session.AddFlash("redirect", r.URL.String())
-		session.AddFlash("Please Login.")
+
+	currentUser, err := GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Username not found, Please try again.")
 		session.Save(r, w)
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 
-	// get path username
-	vars := mux.Vars(r)
-	username, _ := vars["username"]
-	if username == "" {
-		session.AddFlash("Access Denied.")
-		session.Save(r, w)
-		http.Redirect(w, r, "/forbidden", http.StatusNotFound)
-		return
-	}
+	// picture access
+	if !currentUser.Admin && !currentUser.Root {
+		// get path username
+		vars := mux.Vars(r)
+		username, _ := vars["username"]
+		if username == "" {
+			session.AddFlash("Access Denied.")
+			session.Save(r, w)
+			http.Redirect(w, r, "/forbidden", http.StatusNotFound)
+			return
+		}
 
-	// make sure user has access to image
-	if sessionUsername != username {
-		session.AddFlash("Access Denied.")
-		session.Save(r, w)
-		http.Redirect(w, r, "/forbidden", http.StatusNotFound)
-		return
+		// make sure user has access to image
+		if currentUser.Username != username {
+			session.AddFlash("Access Denied.")
+			session.Save(r, w)
+			http.Redirect(w, r, "/forbidden", http.StatusNotFound)
+			return
+		}
 	}
 
 	// find file, or default
@@ -150,17 +154,16 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 
 	// get user session
 	session, _ := c.cookieStore.Get(r, "user-session")
-	username, _ := session.Values["user"].(string)
-	if username == "" {
-		session.AddFlash("redirect", "/pictures")
-		session.AddFlash("Please Login.")
+	currentUser, err := GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Username not found, Please try again.")
 		session.Save(r, w)
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 
 	// init user picture path
-	picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(username))
+	picturePath := fmt.Sprintf("pictures/%s", filepath.Clean(currentUser.Username))
 	os.MkdirAll(picturePath, os.ModePerm)
 
 	// picture url base
@@ -184,6 +187,13 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	home := ""
+	if currentUser.Admin {
+		home = "/admin"
+	} else if currentUser.Root {
+		home = "/root"
+	}
+
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/user/pictures.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
@@ -191,13 +201,15 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		Messages  []string
 		CsrfToken string
 		Username  string
+		Home      string
 		Pictures  []*picture.Picture
 	}{
 		Title:     "My Photo",
 		Messages:  GetMessages(session),
 		CsrfToken: form.New(),
-		Username:  username,
+		Username:  currentUser.Username,
 		Pictures:  pictures,
+		Home:      home,
 	})
 	session.Save(r, w)
 }
@@ -546,19 +558,6 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get redirects if any
-	var redirects []string
-	if flashes := session.Flashes(""); len(flashes) > 0 {
-		redirects = make([]string, len(flashes))
-		for i, f := range flashes {
-			redirects[i] = f.(string)
-		}
-	}
-	if len(redirects) > 0 {
-		// maybe I want the last one....
-		http.Redirect(w, r, redirects[0], http.StatusFound)
-	}
-
 	// Save user session
 	session.Values["user"] = user.Username
 	err = session.Save(r, w)
@@ -567,13 +566,19 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// get redirects if any
+	redirectURL := "/pictures"
 	if user.Root {
-		http.Redirect(w, r, "/root", http.StatusFound)
+		redirectURL = "/root"
 	} else if user.Admin {
-		http.Redirect(w, r, "/admin", http.StatusFound)
-	} else {
-		http.Redirect(w, r, "/pictures", http.StatusFound)
+		redirectURL = "/admin"
 	}
+	flashes := session.Flashes("redirect")
+	for _, f := range flashes {
+		redirectURL = f.(string)
+	}
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // LogoutHandler revokes authentication for a user

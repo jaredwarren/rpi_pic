@@ -37,12 +37,18 @@ func withLogging(next http.HandlerFunc) http.HandlerFunc {
 // LoggedIn valid user
 func (c *Controller) LoggedIn(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Login:", r.URL.String())
+		targetURL := r.URL.String()
+		fmt.Println("Login:", targetURL)
 		// get session
 		session, err := c.cookieStore.Get(r, "user-session")
 		if err != nil {
 			fmt.Println("  [E]", err)
+			if targetURL != "/login" {
+				fmt.Println("    ->  set redirect:", targetURL)
+				session.AddFlash(targetURL, "redirect")
+			}
 			session.AddFlash("Please try again.")
+			session.Save(r, w)
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
@@ -51,7 +57,12 @@ func (c *Controller) LoggedIn(next http.HandlerFunc) http.HandlerFunc {
 		username, ok := session.Values["user"].(string)
 		if !ok || username == "" {
 			fmt.Println("  [E] user session missing")
+			if targetURL != "/login" {
+				fmt.Println("    ->  set redirect:", targetURL)
+				session.AddFlash(targetURL, "redirect")
+			}
 			session.AddFlash("Please try again.")
+			session.Save(r, w)
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}

@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"text/template"
 
 	"github.com/jaredwarren/rpi_pic/picture"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/jaredwarren/rpi_pic/form"
 
@@ -31,6 +33,28 @@ type Controller struct {
 
 // NewAdminController creates a home controller.
 func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sessions.CookieStore) *Controller {
+
+	// force create admin user user for testing
+	// TODO: remove
+	rootUser := &user.User{
+		Username: "admin",
+		Admin:    true,
+		Root:     false,
+		Token:    "",
+	}
+	// TODO: get password from env
+	hash, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.MinCost)
+	if err != nil {
+		panic(err)
+	}
+	rootUser.Password = string(hash)
+
+	// Save user to db
+	err = udb.Save(rootUser)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Controller{
 		udb:         udb,
 		service:     service,
@@ -58,34 +82,18 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 
 	// admin user update, add this one last
 	service.Mux.HandleFunc("/admin/user/{username}", ctrl.Admin(ctrl.ShowUser)).Methods("GET")
-	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.ShowUser)).Methods("POST")
-
-	// admin delete user
-	// service.Mux.HandleFunc("/admin/user/{id}", admin(ctrl.TODO)).Methods("DELETE")
 
 	// ## Picture management
 	// picture list
 	service.Mux.HandleFunc("/admin/picture", ctrl.Admin(ctrl.ListPictures)).Methods("GET")
-	// // picture show in browser
-	// service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("GET")
-	// // display picture on device
-	// service.Mux.HandleFunc("/admin/picture/{id}/display", admin(ctrl.TODO)).Methods("GET")
-	// // picture delete
-	// service.Mux.HandleFunc("/admin/picture/{id}", admin(ctrl.TODO)).Methods("DELETE")
+	service.Mux.HandleFunc("/admin/pictures", ctrl.Admin(ctrl.ListPictures)).Methods("GET")
 
-	// // list picture tags
-	// service.Mux.HandleFunc("/admin/picture/{id}/tag", admin(ctrl.TODO)).Methods("GET")
-	// // tag picture
-	// service.Mux.HandleFunc("/admin/picture/{pid}/tag/{tid}", admin(ctrl.TODO)).Methods("POST")
-	// // delete picture tag
-	// service.Mux.HandleFunc("/admin/picture/{pid}/tag/{tid}", admin(ctrl.TODO)).Methods("DELETE")
-	// // list pictures with tag
-	// service.Mux.HandleFunc("/admin/tag/{id}/picture", admin(ctrl.TODO)).Methods("GET")
+	service.Mux.HandleFunc("/admin/picture/set", ctrl.Admin(ctrl.SetPicture))
+}
 
-	// // show settings
-	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("GET")
-	// // update settings
-	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
+// GetType ...
+func GetType(value interface{}) string {
+	return reflect.TypeOf(value).String()
 }
 
 // Config ...
@@ -93,13 +101,31 @@ func (c *Controller) Config(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Config:", r.URL.String())
 	session, _ := c.cookieStore.Get(r, "user-session")
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/config.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
+
+	currentUser, err := user.GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Plese login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	home := "/admin"
+	if currentUser.Root {
+		home = "/root"
+	}
+
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"gettype": GetType}).ParseFiles("templates/admin/config.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
+		Configs  map[string]interface{}
+		Home     string
 	}{
-		Title:    "Home",
+		Title:    "Admin Config",
 		Messages: user.GetMessages(session),
+		Configs:  c.service.Config.FetchAll(),
+		Home:     home,
 	})
 	session.Save(r, w)
 }
@@ -114,6 +140,20 @@ func (c *Controller) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: update config
 
 	session.Save(r, w)
+}
+
+// SetPicture ...
+func (c *Controller) SetPicture(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("SetPicture:", r.URL.String())
+
+	fmt.Println("TODO: call picture set api.....")
+
+	pictureURL := c.service.Config.Get("pictureURL")
+	if pictureURL == "" {
+		pictureURL = "http://localhost:8081/picture"
+	}
+
+	http.Redirect(w, r, "/admin/pictures", http.StatusFound)
 }
 
 // ListPictures ...
@@ -143,6 +183,9 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 
 		// get lis of all user photos
 		filepath.Walk(picturePath, func(path string, info os.FileInfo, err error) error {
+			if info == nil {
+				return nil
+			}
 			if !info.IsDir() {
 				pictures = append(pictures, &picture.Picture{
 					Name:    info.Name(),
@@ -434,7 +477,7 @@ func (c *Controller) InviteHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	body := tpl.String()
 
-	if c.service.Config.GetBool("email") {
+	if c.service.Config.Get("email").(bool) {
 		panic("not working yet")
 		// test mail
 		m := gomail.NewMessage()

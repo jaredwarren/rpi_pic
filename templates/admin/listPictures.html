@@ -39,6 +39,7 @@
                 <tr>
                     <td>Preview</td>
                     <td>Name</td>
+                    <td>Show</td>
                     <td>Owner</td>
                     <td>Last Modified</td>
                     <td>Size</td>
@@ -51,6 +52,7 @@
                     <td><a href="{{$pic.URL}}" target="_blank"><img src="{{$pic.URL}}" style="width: 50px; height:auto;"></a>
                     </td>
                     <td>{{$pic.Name}}</td>
+                    <td><a href="/admin/picture/set?pic={{$pic.Path}}" class="pure-button pure-button-primary"><i class="fa fa-share-square"></i></button></td>
                     <td>{{$pic.Owner}}</td>
                     <td>{{$pic.ModTime}}</td>
                     <td>{{$pic.Size}}</td>

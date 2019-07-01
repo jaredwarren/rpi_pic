@@ -30,6 +30,12 @@
 <div class="main">
     <form class="pure-form pure-form-aligned">
         <fieldset>
+            <legend>Current Picture</legend>
+            <div>
+                <img src="/pictures/current" style="width: 50px; height:auto;">
+            </div>
+        </fieldset>
+        <fieldset>
 
         <legend>My Pictures</legend>
         <!-- <a href="/pictures/upload" class="pure-button" style="margin: 3px;"><i class="fa fa-upload"></i> Upload</a>
@@ -83,6 +89,9 @@
 <nav>
     <!-- <a href="/pictures/upload" class="pure-button">Upload</a>
     -->
+    {{if .Home}}
+    <a href="{{.Home}}" class="pure-button"><i class="fa fa-home"></i> Home</a> 
+    {{end}}
     <a href="/pictures/upload" class="pure-button"><i class="fa fa-upload"></i> Upload</a> 
     <span class="spacer">&nbsp;</span>
     <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>

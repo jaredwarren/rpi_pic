@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"reflect"
 
 	bolt "go.etcd.io/bbolt"
@@ -21,11 +20,17 @@ func Load(path string) (config *Config, err error) {
 
 	err = db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte("config"))
+		_, err = tx.CreateBucketIfNotExists([]byte("config_type"))
 		return err
 	})
 	if err != nil {
 		panic(err.Error())
 	}
+
+	// set default configs
+	config.Set("email", false)
+	config.Set("pictureURL", "http://localhost:8081/")
+	config.Set("time_per_picture", 30)
 
 	return
 }
@@ -42,38 +47,57 @@ func gobEncode(ci interface{}) []byte {
 	return buf.Bytes()
 }
 
-func gobDecodeBool(data []byte) (bool, error) {
-	var ci bool
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-	err := dec.Decode(&ci)
-	if err != nil {
-		return false, err
-	}
-	return ci, nil
-}
-
-func gobDecodeString(data []byte) (string, error) {
-	var ci string
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-	err := dec.Decode(&ci)
-	if err != nil {
-		return "", err
-	}
-	return ci, nil
-}
-
 // Set ...
 func (us *Config) Set(key string, value interface{}) error {
 	return us.DB.Update(func(tx *bolt.Tx) error {
+		// store type
+		bt := tx.Bucket([]byte("config_type"))
+		vType := reflect.TypeOf(value).String()
+		bt.Put([]byte(key), []byte(vType))
+
+		// store value
 		b := tx.Bucket([]byte("config"))
 		return b.Put([]byte(key), gobEncode(value))
 	})
 }
 
-// Get ...
-func (us *Config) Get(key string, v interface{}) {
+// Get TODO: fix this..
+func (us *Config) Get(key string) (v interface{}) {
+	us.DB.View(func(tx *bolt.Tx) error {
+		// get type
+		bt := tx.Bucket([]byte("config_type"))
+		vType := string(bt.Get([]byte(key)))
+
+		// get value
+		b := tx.Bucket([]byte("config"))
+		data := b.Get([]byte(key))
+
+		// decode
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
+		var err error
+		switch vType {
+		case "string":
+			x := ""
+			err = dec.Decode(&x)
+			v = x
+		case "bool":
+			x := false
+			err = dec.Decode(&x)
+			v = x
+		case "int":
+			x := 0
+			err = dec.Decode(&x)
+			v = x
+		}
+
+		return err
+	})
+	return
+}
+
+// GetVar ...
+func (us *Config) GetVar(key string, v interface{}) {
 	us.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("config"))
 		data := b.Get([]byte(key))
@@ -81,52 +105,51 @@ func (us *Config) Get(key string, v interface{}) {
 		// decode
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
-
-		// TODO: figure out if i can return an interface{}   >>>  x := config.Get("mykey").(string)
-		r := reflect.ValueOf(v)
-		fmt.Println(r.String())
-
 		return dec.Decode(v)
 	})
-
+	return
 }
 
 // FetchAll ...
-func (us *Config) FetchAll() []string {
-
-	// us.DB.View(func(tx *bolt.Tx) error {
-	// 	b := tx.Bucket([]byte("users"))
-	// 	c := b.Cursor()
-	// 	for k, v := c.First(); k != nil; k, v = c.Next() {
-	// 		json.Unmarshal(v, u)
-	// 		r := reflect.ValueOf(u)
-	// 		f := reflect.Indirect(r).FieldByName(key)
-	// 		if f.String() == value {
-	// 			return nil
-	// 		}
-	// 	}
-	// 	return nil
-	// })
-	return nil
-}
-
-// GetBool ...
-func (us *Config) GetBool(key string) bool {
-	br := false
+func (us *Config) FetchAll() map[string]interface{} {
+	result := map[string]interface{}{}
 	us.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("config"))
-		v := b.Get([]byte(key))
-		if len(v) > 0 {
-			br = true
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// get type
+			bt := tx.Bucket([]byte("config_type"))
+			vType := string(bt.Get([]byte(k)))
+			key := string(k)
+
+			// decode
+			buf := bytes.NewBuffer(v)
+			dec := gob.NewDecoder(buf)
+			switch vType {
+			case "string":
+				x := ""
+				dec.Decode(&x)
+				result[key] = x
+			case "bool":
+				x := false
+				dec.Decode(&x)
+				result[key] = x
+			case "int":
+				x := 0
+				dec.Decode(&x)
+				result[key] = x
+			}
 		}
 		return nil
 	})
-	return br
+	return result
 }
 
 // Delete ...
 func (us *Config) Delete(key string) (err error) {
 	return us.DB.Update(func(tx *bolt.Tx) error {
+		bt := tx.Bucket([]byte("config_type"))
+		bt.Delete([]byte(key))
 		b := tx.Bucket([]byte("config"))
 		return b.Delete([]byte(key))
 	})

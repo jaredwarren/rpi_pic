@@ -30,25 +30,25 @@
 <div class="main">
     <form class="pure-form pure-form-aligned">
         <fieldset>
-            <legend>Root Option</legend>
-            <div class="pure-control-group">
-                <a href="/admin/user/invite" class="pure-button pure-button-primary"><i class="fas fa-user-plus"></i> Invite</a>
-                <span class="pure-form-message-inline">Invite user to upload pictures.</span>
-            </div>
-
-            <div class="pure-control-group">
-                <a href="/admin/user" class="pure-button pure-button-primary"><i class="fas fa-users"></i> Users</a>
-                <span class="pure-form-message-inline">Manage user access.</span>
-            </div>
-
-            <div class="pure-control-group">
-                <a href="/admin/picture" class="pure-button pure-button-primary" ><i class="fas fa-images"></i> Images</a>
-                <span class="pure-form-message-inline">Manage Images.</span>
-            </div>
-
-            <div class="pure-control-group">
-                <a href="/admin/config" class="pure-button pure-button-primary"><i class="fas fa-cogs"></i> Config</a>
-                <span class="pure-form-message-inline">Change config settings.</span>
+            <legend>Admin Config</legend>
+            {{range $key, $con := .Configs}}
+                {{$type := $con | gettype}}
+                <div class="pure-control-group">
+                    <label for="{{$key}}">{{$key}}</label>
+                    {{if eq $type "bool"}}
+                        <input id="{{$key}}" type="checkbox" {{if $con}}checked="checked"{{end}} name="{{$key}}" value="{{$con}}">
+                    {{else}}
+                        {{if eq $type "int"}}
+                            <input id="{{$key}}" type="number" step="1" placeholder="{{$key}}" name="{{$key}}" value="{{$con}}">
+                        {{else}}
+                            <input id="{{$key}}" type="text" placeholder="{{$key}}" name="{{$key}}" value="{{$con}}">
+                        {{end}}
+                    {{end}}
+                    <input type="hidden" name="{{$key}}_type" value="{{$type}}">
+                </div>
+            {{end}}
+            <div class="pure-controls">
+                <button type="submit" class="pure-button pure-button-primary">Update</button>
             </div>
         </fieldset>
     </form>
@@ -77,7 +77,7 @@
 <nav>
     <!-- <a href="/pictures/upload" class="pure-button">Upload</a>
     -->
-    <a href="/admin/home" class="pure-button"><i class="fa fa-house"></i> Home</a> 
+    <a href="{{.Home}}" class="pure-button"><i class="fa fa-home"></i> Home</a> 
     <span class="spacer">&nbsp;</span>
     <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>
 </nav>

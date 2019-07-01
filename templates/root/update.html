@@ -1,0 +1,91 @@
+{{define "title"}}{{end}}
+{{define "head"}}
+<style>
+    .main {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .main form {
+        border: 1px solid lightgray;
+        padding: 6px;
+
+    }
+
+    .upload-btn-wrapper {
+        position: relative;
+        overflow: hidden;
+        display: inline-block;
+    }
+
+
+    .upload-btn-wrapper input[type=file] {
+        font-size: 100px;
+        position: absolute;
+        left: 0;
+        top: 0;
+        opacity: 0;
+    }
+</style>
+
+<script>
+</script>
+{{end}}
+
+{{define "body"}}
+{{template "nav" .}}
+<div class="main">
+    <form class="pure-form pure-form-stacked" action="/root/update?csrf_token={{.CsrfToken}}" method="POST"
+        enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
+        <fieldset>
+            <legend>Upload Package</legend>
+            <div class="pure-control-group">
+                <div class="upload-btn-wrapper">
+                    <button type="button" class="button-secondary pure-button" onclick="document.getElementById('upfile').click();"><i class="far fa-images"></i> Select Files</button>
+                    <input id="upfile" type="file" name="package" />
+                </div>
+            </div>
+
+            <br>
+            <div class="pure-controls">
+                <button type="submit" class="pure-button pure-button-primary" style="width: 132px;"><i class="fa fa-upload"></i>
+                    Upload</button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+{{end}}
+
+
+{{define "nav"}}
+<style>
+    nav {
+        padding: 5px;
+        border-bottom: 1px solid grey;
+        position: sticky;
+        top: 0;
+        right: 0;
+        left: 0;
+        display: flex;
+        align-items: stretch;
+    }
+
+    nav * {
+        margin: 4px;
+    }
+
+    .spacer {
+        width: 100%;
+    }
+</style>
+<nav>
+    <!-- <a href="/pictures/upload" class="pure-button">Upload</a>
+    -->
+    <a href="/root" class="pure-button"><i class="fas fa-home"></i> Home</a>
+    <span class="spacer">&nbsp;</span>
+    <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>
+</nav>
+{{end}}
