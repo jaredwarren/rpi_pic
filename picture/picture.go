@@ -6,13 +6,14 @@ import (
 
 // Picture file
 type Picture struct {
-	Name    string
-	Path    string
-	URL     string
-	Type    string
-	ModTime string
-	Size    int64
-	Owner   string
+	Name        string
+	Path        string
+	Description string
+	URL         string
+	Type        string
+	ModTime     string
+	Size        int64
+	Owner       string
 }
 
 func fileExists(filename string) (bool, os.FileInfo) {

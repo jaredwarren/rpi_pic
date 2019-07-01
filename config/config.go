@@ -1,6 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"encoding/gob"
+	"fmt"
+	"reflect"
+
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -30,35 +35,79 @@ type Config struct {
 	DB *bolt.DB
 }
 
-// Set ...
-func (us *Config) Set(key, value string) error {
-	return us.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("config"))
-		return b.Put([]byte(key), []byte(value))
-	})
+func gobEncode(ci interface{}) []byte {
+	buf := new(bytes.Buffer)
+	enc := gob.NewEncoder(buf)
+	enc.Encode(ci)
+	return buf.Bytes()
 }
 
-// SetBool ...
-func (us *Config) SetBool(key string, value bool) error {
+func gobDecodeBool(data []byte) (bool, error) {
+	var ci bool
+	buf := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(buf)
+	err := dec.Decode(&ci)
+	if err != nil {
+		return false, err
+	}
+	return ci, nil
+}
+
+func gobDecodeString(data []byte) (string, error) {
+	var ci string
+	buf := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(buf)
+	err := dec.Decode(&ci)
+	if err != nil {
+		return "", err
+	}
+	return ci, nil
+}
+
+// Set ...
+func (us *Config) Set(key string, value interface{}) error {
 	return us.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("config"))
-		if value {
-			return b.Put([]byte(key), []byte("true"))
-		} else {
-			return b.Delete([]byte(key))
-		}
+		return b.Put([]byte(key), gobEncode(value))
 	})
 }
 
 // Get ...
-func (us *Config) Get(key string) string {
-	v := ""
+func (us *Config) Get(key string, v interface{}) {
 	us.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("config"))
-		v = string(b.Get([]byte(key)))
-		return nil
+		data := b.Get([]byte(key))
+
+		// decode
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
+
+		// TODO: figure out if i can return an interface{}   >>>  x := config.Get("mykey").(string)
+		r := reflect.ValueOf(v)
+		fmt.Println(r.String())
+
+		return dec.Decode(v)
 	})
-	return v
+
+}
+
+// FetchAll ...
+func (us *Config) FetchAll() []string {
+
+	// us.DB.View(func(tx *bolt.Tx) error {
+	// 	b := tx.Bucket([]byte("users"))
+	// 	c := b.Cursor()
+	// 	for k, v := c.First(); k != nil; k, v = c.Next() {
+	// 		json.Unmarshal(v, u)
+	// 		r := reflect.ValueOf(u)
+	// 		f := reflect.Indirect(r).FieldByName(key)
+	// 		if f.String() == value {
+	// 			return nil
+	// 		}
+	// 	}
+	// 	return nil
+	// })
+	return nil
 }
 
 // GetBool ...

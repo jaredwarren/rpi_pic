@@ -42,6 +42,10 @@ func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sess
 func MountAdminController(service *app.Service, ctrl *Controller) {
 	service.Mux.HandleFunc("/admin", ctrl.Admin(ctrl.Home)).Methods("GET")
 
+	// config
+	service.Mux.HandleFunc("/admin/config", ctrl.Admin(ctrl.Config)).Methods("GET")
+	service.Mux.HandleFunc("/admin/config", ctrl.Admin(ctrl.ConfigHandler)).Methods("POST")
+
 	// admin list users
 	service.Mux.HandleFunc("/admin/user", ctrl.Admin(ctrl.ListUsers)).Methods("GET")
 
@@ -82,6 +86,34 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("GET")
 	// // update settings
 	// service.Mux.HandleFunc("/admin/settings", admin(ctrl.TODO)).Methods("POST")
+}
+
+// Config ...
+func (c *Controller) Config(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Config:", r.URL.String())
+	session, _ := c.cookieStore.Get(r, "user-session")
+	// parse every time to make updates easier, and save memory
+	templates := template.Must(template.ParseFiles("templates/admin/config.html", "templates/base.html"))
+	templates.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+	}{
+		Title:    "Home",
+		Messages: user.GetMessages(session),
+	})
+	session.Save(r, w)
+}
+
+// ConfigHandler ...
+func (c *Controller) ConfigHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("ConfigHandler:", r.URL.String())
+	session, _ := c.cookieStore.Get(r, "user-session")
+	r.ParseForm()
+	fmt.Printf("  %+v\n", r.Form)
+
+	// TODO: update config
+
+	session.Save(r, w)
 }
 
 // ListPictures ...
