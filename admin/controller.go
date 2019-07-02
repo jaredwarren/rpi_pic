@@ -12,15 +12,13 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jaredwarren/rpi_pic/picture"
-	"golang.org/x/crypto/bcrypt"
-
-	"github.com/jaredwarren/rpi_pic/form"
-
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
+	"github.com/jaredwarren/rpi_pic/form"
+	"github.com/jaredwarren/rpi_pic/picture"
 	"github.com/jaredwarren/rpi_pic/user"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/gomail.v2"
 )
 
@@ -33,26 +31,24 @@ type Controller struct {
 
 // NewAdminController creates a home controller.
 func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sessions.CookieStore) *Controller {
-
-	// force create admin user user for testing
-	// TODO: remove
-	rootUser := &user.User{
-		Username: "admin",
-		Admin:    true,
-		Root:     false,
-		Token:    "",
-	}
-	// TODO: get password from env
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.MinCost)
-	if err != nil {
-		panic(err)
-	}
-	rootUser.Password = string(hash)
-
-	// Save user to db
-	err = udb.Save(rootUser)
-	if err != nil {
-		panic(err)
+	// TODO: remove this
+	{
+		// force create admin user user for testing
+		rootUser := &user.User{
+			Username: "admin",
+			Admin:    true,
+			Root:     false,
+			Token:    "",
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.MinCost)
+		if err != nil {
+			panic(err)
+		}
+		rootUser.Password = string(hash)
+		err = udb.Save(rootUser)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return &Controller{
@@ -88,10 +84,12 @@ func MountAdminController(service *app.Service, ctrl *Controller) {
 	service.Mux.HandleFunc("/admin/picture", ctrl.Admin(ctrl.ListPictures)).Methods("GET")
 	service.Mux.HandleFunc("/admin/pictures", ctrl.Admin(ctrl.ListPictures)).Methods("GET")
 
+	// picture
 	service.Mux.HandleFunc("/admin/picture/set", ctrl.Admin(ctrl.SetPicture))
+	service.Mux.HandleFunc("/picture", ctrl.Admin(ctrl.SetPicture)).Methods("POST")
 }
 
-// GetType ...
+// GetType returns interface type for templates
 func GetType(value interface{}) string {
 	return reflect.TypeOf(value).String()
 }
@@ -204,17 +202,15 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/listPictures.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		CsrfToken string
-		Messages  []string
-		Pictures  []*picture.Picture
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken}).ParseFiles("templates/admin/listPictures.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Pictures []*picture.Picture
 	}{
-		Title:     "User List",
-		Messages:  messages,
-		CsrfToken: form.New(),
-		Pictures:  pictures,
+		Title:    "User List",
+		Messages: messages,
+		Pictures: pictures,
 	})
 	session.Save(r, w)
 }
@@ -256,17 +252,15 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/listUsers.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		CsrfToken string
-		Messages  []string
-		Users     []*user.User
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken}).ParseFiles("templates/admin/listUsers.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Users    []*user.User
 	}{
-		Title:     "User List",
-		Messages:  messages,
-		Users:     users,
-		CsrfToken: form.New(),
+		Title:    "User List",
+		Messages: messages,
+		Users:    users,
 	})
 	session.Save(r, w)
 }

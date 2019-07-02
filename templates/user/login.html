@@ -35,7 +35,7 @@
             <div>{{$message}}</div>
         {{end}}
         <fieldset>
-            <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
+            <input type="hidden" name="csrf_token" value="{{CsrfToken}}">
             <div class="pure-control-group">
                 <label for="username">Username</label>
                 <input id="username" type="text" name="username" placeholder="Username" {{if .Username}}value="{{.Username}}"{{end}}>

@@ -37,9 +37,10 @@
 {{define "body"}}
 {{template "nav" .}}
 <div class="main">
-    <form class="pure-form pure-form-stacked" action="/root/update?csrf_token={{.CsrfToken}}" method="POST"
+    {{$csrfToken := CsrfToken}}
+    <form class="pure-form pure-form-stacked" action="/root/update?csrf_token={{$csrfToken}}" method="POST"
         enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
+        <input type="hidden" name="csrf_token" value="{{$csrfToken}}">
         <fieldset>
             <legend>Upload Package</legend>
             <div class="pure-control-group">

@@ -22,12 +22,14 @@ import (
 type Controller struct {
 	udb         *Store
 	cookieStore *sessions.CookieStore
+	service     *app.Service
 }
 
 // NewUserController creates a home controller.
 func NewUserController(service *app.Service, udb *Store, cookieStore *sessions.CookieStore) *Controller {
 	return &Controller{
 		udb:         udb,
+		service:     service,
 		cookieStore: cookieStore,
 	}
 }
@@ -49,13 +51,52 @@ func MountUserController(service *app.Service, ctrl *Controller) {
 	// other
 	service.Mux.HandleFunc("/forbidden", ctrl.Forbidden).Methods("GET")
 
-	// pictures
-	service.Mux.HandleFunc("/picture", ctrl.LoggedIn(ctrl.ListPictures)).Methods("GET")
+	// my pictures
 	service.Mux.HandleFunc("/pictures", ctrl.LoggedIn(ctrl.ListPictures)).Methods("GET")
-	service.Mux.HandleFunc("/pictures/upload", ctrl.LoggedIn(ctrl.UploadPicture)).Methods("GET")
-	service.Mux.HandleFunc("/pictures/delete", CsrfForm(ctrl.LoggedIn(ctrl.DeletePicture))).Methods("GET")
-	service.Mux.HandleFunc("/pictures/upload", CsrfForm(ctrl.LoggedIn(ctrl.UploadPictureHandler))).Methods("POST")
+	service.Mux.HandleFunc("/my/pictures", ctrl.LoggedIn(ctrl.ListPictures)).Methods("GET")
+	service.Mux.HandleFunc("/my/pictures/upload", ctrl.LoggedIn(ctrl.UploadPicture)).Methods("GET")
+	service.Mux.HandleFunc("/my/pictures/upload", CsrfForm(ctrl.LoggedIn(ctrl.UploadPictureHandler))).Methods("POST")
+	service.Mux.HandleFunc("/my/pictures/delete", CsrfForm(ctrl.LoggedIn(ctrl.DeletePicture))).Methods("GET")
 	service.Mux.HandleFunc("/pictures/{username}/{file}", ctrl.LoggedIn(ctrl.ServePicture)).Methods("GET")
+
+	// pictures
+	service.Mux.HandleFunc("/picture", ctrl.LoggedIn(ctrl.Current)).Methods("GET")
+	service.Mux.HandleFunc("/picture/current", ctrl.LoggedIn(ctrl.Current)).Methods("GET")
+}
+
+// CsrfToken returns token
+func CsrfToken() string {
+	return form.New()
+}
+
+// GetHash returns random string
+func GetHash() string {
+	return form.GetHash(32)
+}
+
+// Current ...
+func (c *Controller) Current(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Current:", r.URL.String())
+
+	// picture url base
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = fmt.Sprintf("http://%s/", r.Host)
+	}
+
+	// find file, or default
+	filename := c.service.CurrentPicture.Path
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) || info.IsDir() {
+		filename = "pictures/default.png"
+	}
+
+	fmt.Println("  current:", filename)
+
+	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+
+	http.ServeFile(w, r, filename)
 }
 
 // DeletePicture ...
@@ -66,7 +107,7 @@ func (c *Controller) DeletePicture(w http.ResponseWriter, r *http.Request) {
 	session, _ := c.cookieStore.Get(r, "user-session")
 	username, _ := session.Values["user"].(string)
 	if username == "" {
-		session.AddFlash("redirect", "/pictures")
+		session.AddFlash("redirect", "/my/pictures")
 		session.AddFlash("Please Login.")
 		session.Save(r, w)
 		http.Redirect(w, r, "/login", http.StatusFound)
@@ -78,7 +119,7 @@ func (c *Controller) DeletePicture(w http.ResponseWriter, r *http.Request) {
 	if file == "" {
 		session.AddFlash("Access Denied.")
 		session.Save(r, w)
-		http.Redirect(w, r, "/pictures", http.StatusNotFound)
+		http.Redirect(w, r, "/my/pictures", http.StatusNotFound)
 		return
 	}
 
@@ -95,11 +136,11 @@ func (c *Controller) DeletePicture(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		session.AddFlash("Cannot delete file")
 		session.Save(r, w)
-		http.Redirect(w, r, "/pictures", http.StatusInternalServerError)
+		http.Redirect(w, r, "/my/pictures", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/pictures", http.StatusFound)
+	http.Redirect(w, r, "/my/pictures", http.StatusFound)
 }
 
 // ServePicture ...
@@ -144,6 +185,7 @@ func (c *Controller) ServePicture(w http.ResponseWriter, r *http.Request) {
 	if os.IsNotExist(err) || info.IsDir() {
 		filename = "pictures/broken.png"
 	}
+	fmt.Println("  sp:", filename)
 
 	http.ServeFile(w, r, filename)
 }
@@ -195,21 +237,19 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/user/pictures.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		Messages  []string
-		CsrfToken string
-		Username  string
-		Home      string
-		Pictures  []*picture.Picture
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": CsrfToken, "GetHash": GetHash}).ParseFiles("templates/user/pictures.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Username string
+		Home     string
+		Pictures []*picture.Picture
 	}{
-		Title:     "My Photo",
-		Messages:  GetMessages(session),
-		CsrfToken: form.New(),
-		Username:  currentUser.Username,
-		Pictures:  pictures,
-		Home:      home,
+		Title:    "My Photo",
+		Messages: GetMessages(session),
+		Username: currentUser.Username,
+		Pictures: pictures,
+		Home:     home,
 	})
 	session.Save(r, w)
 }
@@ -222,7 +262,7 @@ func (c *Controller) UploadPicture(w http.ResponseWriter, r *http.Request) {
 	session, _ := c.cookieStore.Get(r, "user-session")
 	username, _ := session.Values["user"].(string)
 	if username == "" {
-		session.AddFlash("redirect", "/pictures/upload")
+		session.AddFlash("redirect", "/my/pictures/upload")
 		session.AddFlash("Please Login.")
 		session.Save(r, w)
 		http.Redirect(w, r, fmt.Sprintf("/login"), http.StatusFound)
@@ -230,17 +270,15 @@ func (c *Controller) UploadPicture(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/user/upload.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		Messages  []string
-		CsrfToken string
-		Username  string
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": CsrfToken}).ParseFiles("templates/user/upload.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Username string
 	}{
-		Title:     "Upload Photo",
-		Messages:  GetMessages(session),
-		CsrfToken: form.New(),
-		Username:  username,
+		Title:    "Upload Photo",
+		Messages: GetMessages(session),
+		Username: username,
 	})
 	session.Save(r, w)
 }
@@ -276,7 +314,7 @@ func (c *Controller) UploadPictureHandler(w http.ResponseWriter, r *http.Request
 	if m == nil {
 		session.AddFlash("form data error")
 		session.Save(r, w)
-		http.Redirect(w, r, fmt.Sprintf("/pictures/upload"), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/my/pictures/upload"), http.StatusFound)
 		return
 	}
 	for _, fileHeader := range m.File["picture[]"] {
@@ -325,7 +363,7 @@ func (c *Controller) UploadPictureHandler(w http.ResponseWriter, r *http.Request
 	session.Save(r, w)
 
 	// redirect back to picture list
-	http.Redirect(w, r, "/pictures", http.StatusFound)
+	http.Redirect(w, r, "/my/pictures", http.StatusFound)
 }
 
 // Register form
@@ -367,19 +405,17 @@ func (c *Controller) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/user/register.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		Messages  []string
-		Username  string
-		Token     string
-		CsrfToken string
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": CsrfToken}).ParseFiles("templates/user/register.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Username string
+		Token    string
 	}{
-		Title:     fmt.Sprintf("Register: %s", username),
-		Messages:  GetMessages(session),
-		Username:  username,
-		Token:     token,
-		CsrfToken: form.New(),
+		Title:    fmt.Sprintf("Register: %s", username),
+		Messages: GetMessages(session),
+		Username: username,
+		Token:    token,
 	})
 	session.Save(r, w)
 }
@@ -483,7 +519,7 @@ func (c *Controller) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// redirect
-	http.Redirect(w, r, "/pictures", http.StatusFound)
+	http.Redirect(w, r, "/my/pictures", http.StatusFound)
 }
 
 // Login form
@@ -495,17 +531,15 @@ func (c *Controller) Login(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/user/login.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		Messages  []string
-		CsrfToken string
-		Username  string
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": CsrfToken}).ParseFiles("templates/user/login.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
+		Username string
 	}{
-		Title:     "login",
-		Messages:  GetMessages(session),
-		CsrfToken: form.New(),
-		Username:  username,
+		Title:    "login",
+		Messages: GetMessages(session),
+		Username: username,
 	})
 	session.Save(r, w)
 }
@@ -529,7 +563,7 @@ func (c *Controller) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// already logged in
 	sessionUsername, _ := session.Values["user"].(string)
 	if sessionUsername != "" && sessionUsername == username {
-		http.Redirect(w, r, "/pictures", http.StatusFound)
+		http.Redirect(w, r, "/my/pictures", http.StatusFound)
 		return
 	}
 

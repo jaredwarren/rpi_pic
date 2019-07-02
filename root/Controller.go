@@ -8,7 +8,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jaredwarren/rpi_pic/form"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gorilla/sessions"
@@ -77,15 +76,13 @@ func (c *Controller) Update(w http.ResponseWriter, r *http.Request) {
 	messages := user.GetMessages(session)
 
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/root/update.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
-		Title     string
-		CsrfToken string
-		Messages  []string
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken}).ParseFiles("templates/root/update.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title    string
+		Messages []string
 	}{
-		Title:     "User List",
-		Messages:  messages,
-		CsrfToken: form.New(),
+		Title:    "User List",
+		Messages: messages,
 	})
 	session.Save(r, w)
 }
@@ -93,6 +90,11 @@ func (c *Controller) Update(w http.ResponseWriter, r *http.Request) {
 // UpdateHandler ...
 func (c *Controller) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("UpdateHandler", r.URL.String())
+
+	// unzip package
+	// copy files
+	// restart if needed
+
 	w.Write([]byte("TODO: figure out how to update files, and restart self"))
 }
 

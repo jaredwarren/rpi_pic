@@ -41,7 +41,7 @@ func Check(key string) (f *Form, ok bool) {
 
 // New return new form
 func New() string {
-	hash := getHash(32)
+	hash := GetHash(32)
 	forms[hash] = &Form{
 		Hash: hash,
 		Date: time.Now(),
@@ -55,7 +55,8 @@ const (
 	letterIdxMask = 1<<letterIdxBits - 1
 )
 
-func getHash(n int) string {
+// GetHash ...
+func GetHash(n int) string {
 	b := make([]byte, n)
 	for i := 0; i < n; {
 		if idx := int(rand.Int63() & letterIdxMask); idx < len(letterBytes) {

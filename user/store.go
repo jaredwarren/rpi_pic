@@ -48,14 +48,13 @@ func (us *Store) Save(u *User) error {
 	return us.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("users"))
 
-		// look for exsisting user
-		var err error
-		v := b.Get([]byte(u.Username))
 		// new user add ID
-		if len(v) == 0 {
+		if u.ID == "" {
 			var id uint64
-			id, err = b.NextSequence()
-			u.ID = strconv.FormatUint(id, 10)
+			id, err := b.NextSequence()
+			if err == nil {
+				u.ID = strconv.FormatUint(id, 10)
+			}
 		}
 
 		buf, err := json.Marshal(u)

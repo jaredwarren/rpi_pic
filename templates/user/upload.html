@@ -37,9 +37,10 @@
 {{define "body"}}
 {{template "nav" .}}
 <div class="main">
-    <form class="pure-form pure-form-stacked" action="/pictures/upload?csrf_token={{.CsrfToken}}" method="POST"
+    {{$csrfToken := CsrfToken}}
+    <form class="pure-form pure-form-stacked" action="/my/pictures/upload" method="POST"
         enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{.CsrfToken}}">
+        <input type="hidden" name="csrf_token" value="{{$csrfToken}}">
         <fieldset>
             <legend>Upload Picture</legend>
             <div class="pure-control-group">
@@ -82,9 +83,9 @@
     }
 </style>
 <nav>
-    <!-- <a href="/pictures/upload" class="pure-button">Upload</a>
+    <!-- <a href="/my/pictures/upload" class="pure-button">Upload</a>
     -->
-    <a href="/pictures" class="pure-button"><i class="fas fa-portrait"></i> My Pictures</a>
+    <a href="/my/pictures" class="pure-button"><i class="fas fa-portrait"></i> My Pictures</a>
     <span class="spacer">&nbsp;</span>
     <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>
 </nav>

@@ -9,7 +9,6 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/admin"
 	"github.com/jaredwarren/rpi_pic/app"
-	"github.com/jaredwarren/rpi_pic/picture"
 	"github.com/jaredwarren/rpi_pic/root"
 	"github.com/jaredwarren/rpi_pic/user"
 )
@@ -47,8 +46,8 @@ func main() {
 	uc := user.NewUserController(service, userStore, cookieStore)
 	user.MountUserController(service, uc)
 
-	pc := picture.NewPictureController(service)
-	picture.MountPictureController(service, pc)
+	// pc := picture.NewPictureController(service)
+	// picture.MountPictureController(service, pc)
 
 	ac := admin.NewAdminController(service, userStore, cookieStore)
 	admin.MountAdminController(service, ac)
