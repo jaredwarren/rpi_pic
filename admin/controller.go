@@ -144,7 +144,8 @@ func (c *Controller) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) SetPicture(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("SetPicture:", r.URL.String())
 
-	fmt.Println("TODO: call picture set api.....")
+	pic := r.FormValue("pic")
+	c.service.CurrentPicture.Set(pic)
 
 	pictureURL := c.service.Config.Get("pictureURL")
 	if pictureURL == "" {
@@ -166,6 +167,8 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		messages = append(messages, "error loading users:"+err.Error())
 		return
 	}
+
+	fmt.Printf("%+v\n", messages)
 
 	// picture url base
 	origin := r.Header.Get("Origin")
@@ -201,8 +204,10 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		user.PicCount = len(files)
 	}
 
+	session.Save(r, w)
+
 	// parse every time to make updates easier, and save memory
-	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken}).ParseFiles("templates/admin/listPictures.html", "templates/base.html"))
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken, "GetHash": user.GetHash}).ParseFiles("templates/admin/listPictures.html", "templates/base.html"))
 	tpl.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
@@ -212,7 +217,6 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		Messages: messages,
 		Pictures: pictures,
 	})
-	session.Save(r, w)
 }
 
 // Home ...

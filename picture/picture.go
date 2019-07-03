@@ -38,8 +38,20 @@ func fileExists(filename string) (bool, os.FileInfo) {
 
 // Set current picture
 func (p *Picture) Set(path string) (err error) {
-	// get file
-	// update data...
+
+	info, _ := os.Stat(path)
+	p.Name = path // TODO: base
+	p.Path = path
+	p.Size = info.Size()
+
+	fmt.Println(" >>> ", path)
+
+	// TODO: stack file
+
+	// show picture, bash or web????
+
+	// restart timer...
+
 	return nil
 }
 
@@ -105,7 +117,7 @@ func (p *Picture) Start() (err error) {
 	p.Next()
 
 	// TODO: get config,
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(1000 * time.Second)
 	go func() {
 		for range ticker.C {
 			p.Next()

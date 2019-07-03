@@ -33,6 +33,20 @@
         {{range $i, $message := .Messages}}
         <div>{{$message}}</div>
         {{end}}
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                var currentImage = document.getElementById("currentImage")
+                setInterval(function () {
+                    currentImage.src = "/picture/current?_hash_=" + new Date().getTime();
+                }, 5000000) // TODO: change this back to 5000, get from config/2 or something...
+            });
+        </script>
+        <fieldset>
+            <legend>Current Picture</legend>
+            <div style="justify-content: center; display: flex;">
+                <img id="currentImage" src="/picture/current?_hash_={{GetHash}}" style="height: 100px; width: auto;">
+            </div>
+        </fieldset>
         <!-- <a href="/admin/user/invite" class="pure-button" style="margin: 4px;"><i class="fas fa-user-plus"></i> Invite</a> -->
         <table class="pure-table">
             <thead>

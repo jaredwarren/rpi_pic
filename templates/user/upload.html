@@ -37,10 +37,9 @@
 {{define "body"}}
 {{template "nav" .}}
 <div class="main">
-    {{$csrfToken := CsrfToken}}
     <form class="pure-form pure-form-stacked" action="/my/pictures/upload" method="POST"
         enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{$csrfToken}}">
+        <input type="hidden" name="csrf_token" value="{{CsrfToken}}">
         <fieldset>
             <legend>Upload Picture</legend>
             <div class="pure-control-group">

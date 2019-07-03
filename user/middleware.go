@@ -75,7 +75,7 @@ func (c *Controller) LoggedIn(next http.HandlerFunc) http.HandlerFunc {
 func CsrfForm(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("csrf:", r.URL.String())
-		r.ParseForm()
+		r.ParseMultipartForm(32 << 20)
 
 		// validate session token
 		tokenHash := r.FormValue("csrf_token")

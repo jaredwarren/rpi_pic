@@ -34,8 +34,12 @@ func main() {
 		encryptionKeyOne,
 	)
 	cookieStore.Options = &sessions.Options{
-		MaxAge:   60 * 15,
+		// MaxAge: 0,
+		MaxAge:   604800,
 		HttpOnly: true,
+		Path:     "/",
+		// Domain:   "localhost",
+		// Secure:   true,
 	}
 
 	// service paths

@@ -28,7 +28,8 @@
 {{define "body"}}
 {{template "nav" .}}
 <div class="main">
-    <form class="pure-form pure-form-aligned">
+    <form action="/admin/config" method="POST" class="pure-form pure-form-aligned">
+        <input type="hidden" name="csrf_token" value="{{CsrfToken}}">
         <fieldset>
             <legend>Admin Config</legend>
             {{range $key, $con := .Configs}}

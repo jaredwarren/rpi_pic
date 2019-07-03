@@ -25,7 +25,7 @@
         var currentImage = document.getElementById("currentImage")
         setInterval(function(){
             currentImage.src = "/picture/current?_hash_=" + new Date().getTime();
-        }, 5000)
+        }, 5000000) // TODO: change this back to 5000, get from config/2 or something...
     });
 
 </script>
@@ -41,8 +41,8 @@
                 <img id="currentImage" src="/picture/current?_hash_={{GetHash}}" style="height: 100px; width: auto;">
             </div>
         </fieldset>
+        
         <fieldset>
-
         <legend>My Pictures</legend>
         <!-- <a href="/my/pictures/upload" class="pure-button" style="margin: 3px;"><i class="fa fa-upload"></i> Upload</a>
             <br> -->
