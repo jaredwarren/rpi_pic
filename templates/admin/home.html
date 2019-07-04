@@ -29,6 +29,20 @@
 {{template "nav" .}}
 <div class="main">
     <form class="pure-form pure-form-aligned">
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                var currentImage = document.getElementById("currentImage")
+                setInterval(function () {
+                    currentImage.src = "/picture/current?_hash_=" + new Date().getTime();
+                }, '{{.PicTime}}000')
+            });
+        </script>
+        <fieldset>
+            <legend>Current Picture</legend>
+            <div style="justify-content: center; display: flex;">
+                <img id="currentImage" src="/picture/current?_hash_={{GetHash}}" style="height: 100px; width: auto;">
+            </div>
+        </fieldset>
         <fieldset>
             <legend>Admin Option</legend>
             <div class="pure-control-group">
@@ -44,6 +58,11 @@
             <div class="pure-control-group">
                 <a href="/admin/picture" class="pure-button pure-button-primary" ><i class="fas fa-images"></i> Images</a>
                 <span class="pure-form-message-inline">Manage Images.</span>
+            </div>
+
+            <div class="pure-control-group">
+                <a href="/my/pictures" class="pure-button pure-button-primary"><i class="fas fa-image"></i> My Images</a>
+                <span class="pure-form-message-inline">Manage My Images.</span>
             </div>
 
             <div class="pure-control-group">
@@ -75,8 +94,9 @@
     }
 </style>
 <nav>
-    <!-- <a href="/my/pictures/upload" class="pure-button">Upload</a>
-    -->
+    {{if .User.Root}}
+    <a href="/root" class="pure-button"><i class="fa fa-home"></i> Root</a> 
+    {{end}}
     <a href="/my/pictures/upload" class="pure-button"><i class="fa fa-upload"></i> Upload</a> 
     <span class="spacer">&nbsp;</span>
     <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>

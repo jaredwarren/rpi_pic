@@ -113,11 +113,11 @@ func (p *Picture) Previous() (err error) {
 }
 
 // Start current picture
-func (p *Picture) Start() (err error) {
+func (p *Picture) Start(picTime int) (err error) {
 	p.Next()
 
 	// TODO: get config,
-	ticker := time.NewTicker(1000 * time.Second)
+	ticker := time.NewTicker(time.Duration(picTime) * time.Second)
 	go func() {
 		for range ticker.C {
 			p.Next()

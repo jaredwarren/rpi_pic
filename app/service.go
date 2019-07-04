@@ -22,8 +22,14 @@ func New(name string) *Service {
 
 	config, _ := config.Load(fmt.Sprintf("./%s_config.db", name))
 
+	// get time per picture
+	picTime := config.Get("time_per_picture").(int)
+	if picTime <= 0 {
+		picTime = 30
+	}
+
 	currentPicture := &picture.Picture{}
-	currentPicture.Start()
+	currentPicture.Start(picTime)
 
 	var service = &Service{
 		Name:           name,

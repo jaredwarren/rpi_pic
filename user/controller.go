@@ -35,6 +35,8 @@ func NewUserController(service *app.Service, udb *Store, cookieStore *sessions.C
 
 // MountUserController "mounts" a Home resource controller on the given service.
 func MountUserController(service *app.Service, ctrl *Controller) {
+	service.Mux.HandleFunc("/health_check", ctrl.HealthCheck)
+
 	// user register form
 	service.Mux.HandleFunc("/register", ctrl.Register).Methods("GET")
 	service.Mux.HandleFunc("/register", CsrfForm(ctrl.RegisterHandler)).Methods("POST")
@@ -381,6 +383,12 @@ func (c *Controller) Forbidden(w http.ResponseWriter, r *http.Request) {
 		Messages: GetMessages(session),
 	})
 	session.Save(r, w)
+}
+
+// HealthCheck ...
+func (c *Controller) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 // GetMessages returns list of flash messages, be sure to call Save(w, r), or flash messages will not be removed

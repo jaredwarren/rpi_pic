@@ -112,9 +112,9 @@ func (us *Store) FetchAll() (users []*User, err error) {
 
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if string(k) == "root" {
-				continue
-			}
+			// if string(k) == "root" {
+			// 	continue
+			// }
 			u := &User{}
 			if len(v) == 0 {
 				u = nil

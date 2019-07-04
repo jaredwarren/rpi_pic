@@ -55,7 +55,6 @@ func NewRootController(service *app.Service, udb *user.Store, cookieStore *sessi
 func MountRootController(service *app.Service, ctrl *Controller) {
 	service.Mux.HandleFunc("/root", ctrl.Root(ctrl.Home)).Methods("GET")
 
-	//
 	service.Mux.HandleFunc("/root/restart", ctrl.Root(ctrl.RestartHandler))
 
 	service.Mux.HandleFunc("/root/update", ctrl.Root(ctrl.Update)).Methods("GET")
@@ -65,7 +64,18 @@ func MountRootController(service *app.Service, ctrl *Controller) {
 // RestartHandler ...
 func (c *Controller) RestartHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("RestartHandler", r.URL.String())
-	w.Write([]byte("TODO: figure out how to restart...."))
+
+	// TODO: show reload animation, or something...
+
+	// parse every time to make updates easier, and save memory
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken}).ParseFiles("templates/root/restart.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
+		Title string
+		// Messages []string
+	}{
+		Title: "User List",
+		// Messages: messages,
+	})
 }
 
 // Update ...
@@ -94,6 +104,7 @@ func (c *Controller) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	// unzip package
 	// copy files
 	// restart if needed
+	// besure to backup old files, incase something goes wrong
 
 	w.Write([]byte("TODO: figure out how to update files, and restart self"))
 }

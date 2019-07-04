@@ -24,11 +24,23 @@ func main() {
 	var cookieStore *sessions.CookieStore
 	// authKeyOne := securecookie.GenerateRandomKey(64)
 	// TODO: store these as env vars
-	authKeyOne := []byte("nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7SnLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S")
+	authKey := os.Getenv("AUTH_KEY")
+	if authKey == "" {
+		panic("AUTH_KEY required")
+	}
+	// authKeyOne := []byte("nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7SnLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S")
+	authKeyOne := []byte(authKey)
+
 	// fmt.Printf(":authKeyOne:%s\n", authKeyOne)
 	// encryptionKeyOne := securecookie.GenerateRandomKey(32)
 	// fmt.Printf(":encryptionKeyOne:%s\n", encryptionKeyOne)
-	encryptionKeyOne := []byte("nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S")
+
+	encKey := os.Getenv("ENC_KEY")
+	if encKey == "" {
+		panic("ENC_KEY required")
+	}
+	// encryptionKeyOne := []byte("nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S")
+	encryptionKeyOne := []byte(encKey)
 	cookieStore = sessions.NewCookieStore(
 		authKeyOne,
 		encryptionKeyOne,

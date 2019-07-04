@@ -1,0 +1,23 @@
+version: '2'
+tasks:
+  # Blaze
+  br:
+    desc: |
+      build and run
+          
+    cmds:
+      - task: build
+      - task: run
+
+  build:
+    desc: |
+      build 
+    cmds:
+      - go build
+    
+  run:
+    desc: |
+      run 
+    cmds:
+      - ENC_KEY=nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S AUTH_KEY=nLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7SnLgrBC6QDqmKnUmYeS7AdUXvVD6EAb7S ./rpi_pic 
+  

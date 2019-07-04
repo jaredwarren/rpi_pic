@@ -1,0 +1,12 @@
+[Unit]
+ Description=Raspberry Pi Picture
+ After=multi-user.target
+
+ [Service]
+ Type=idle
+ Environment="SECRET=pGNqduRFkB4K9C2vijOmUDa2kPtUhArN"
+ Environment="ANOTHER_SECRET=JP8YLOc2bsNlrGuD6LVTq7L36obpjzxd"
+ ExecStart=/home/pi/rpi_pic
+
+ [Install]
+ WantedBy=multi-user.target

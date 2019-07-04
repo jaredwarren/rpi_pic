@@ -1,11 +1,22 @@
 #
 
 
+## ip setup
+ - look into using https://www.noip.com/ or ngrok
+ - block ip's or add 2-factor
 
 
+## email
+ - https://www.mailgun.com/
+ - https://www.mailjet.com/
+ - ...
 
 
-
+## Display
+ - links2
+ - pqiv
+ - fbi 
+ - fim https://www.nongnu.org/fbi-improved/
 
 
 ## TOOD: later

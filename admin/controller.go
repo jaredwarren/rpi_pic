@@ -113,7 +113,7 @@ func (c *Controller) Config(w http.ResponseWriter, r *http.Request) {
 		home = "/root"
 	}
 
-	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"gettype": GetType}).ParseFiles("templates/admin/config.html", "templates/base.html"))
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken, "gettype": GetType}).ParseFiles("templates/admin/config.html", "templates/base.html"))
 	tpl.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
@@ -159,6 +159,20 @@ func (c *Controller) SetPicture(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ListPictures", r.URL.String())
 	session, _ := c.cookieStore.Get(r, "user-session")
+
+	currentUser, err := user.GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Plese login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	home := "/admin"
+	if currentUser.Root {
+		home = "/root"
+	}
+
 	// Check for duplicate username
 	messages := user.GetMessages(session)
 
@@ -167,8 +181,6 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		messages = append(messages, "error loading users:"+err.Error())
 		return
 	}
-
-	fmt.Printf("%+v\n", messages)
 
 	// picture url base
 	origin := r.Header.Get("Origin")
@@ -212,10 +224,14 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 		Title    string
 		Messages []string
 		Pictures []*picture.Picture
+		Home     string
+		PicTime  int
 	}{
 		Title:    "User List",
 		Messages: messages,
 		Pictures: pictures,
+		Home:     home,
+		PicTime:  c.service.Config.Get("time_per_picture").(int),
 	})
 }
 
@@ -223,14 +239,25 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) Home(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.String())
 	session, _ := c.cookieStore.Get(r, "user-session")
+	currentUser, err := user.GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Plese login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 	// parse every time to make updates easier, and save memory
-	templates := template.Must(template.ParseFiles("templates/admin/home.html", "templates/base.html"))
-	templates.ExecuteTemplate(w, "base", &struct {
+	tpl := template.Must(template.New("base").Funcs(template.FuncMap{"CsrfToken": user.CsrfToken, "GetHash": user.GetHash}).ParseFiles("templates/admin/home.html", "templates/base.html"))
+	tpl.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
+		PicTime  int
+		User     *user.User
 	}{
 		Title:    "Home",
 		Messages: user.GetMessages(session),
+		PicTime:  c.service.Config.Get("time_per_picture").(int),
+		User:     currentUser,
 	})
 	session.Save(r, w)
 }
@@ -239,6 +266,19 @@ func (c *Controller) Home(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ListUsers", r.URL.String())
 	session, _ := c.cookieStore.Get(r, "user-session")
+	currentUser, err := user.GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Plese login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	home := "/admin"
+	if currentUser.Root {
+		home = "/root"
+	}
+
 	// Check for duplicate username
 	messages := user.GetMessages(session)
 
@@ -261,10 +301,12 @@ func (c *Controller) ListUsers(w http.ResponseWriter, r *http.Request) {
 		Title    string
 		Messages []string
 		Users    []*user.User
+		Home     string
 	}{
 		Title:    "User List",
 		Messages: messages,
 		Users:    users,
+		Home:     home,
 	})
 	session.Save(r, w)
 }
@@ -393,16 +435,31 @@ func (c *Controller) Invite(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Invite:", r.URL.String())
 	session, _ := c.cookieStore.Get(r, "user-session")
 
+	currentUser, err := user.GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Plese login.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	home := "/admin"
+	if currentUser.Root {
+		home = "/root"
+	}
+
 	// parse every time to make updates easier, and save memory
 	templates := template.Must(template.ParseFiles("templates/admin/invite.html", "templates/base.html"))
 	templates.ExecuteTemplate(w, "base", &struct {
 		Title    string
 		Messages []string
 		Token    string
+		Home     string
 	}{
 		Title:    "login",
 		Messages: user.GetMessages(session),
 		Token:    form.New(),
+		Home:     home,
 	})
 	session.Save(r, w)
 }

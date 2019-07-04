@@ -38,7 +38,7 @@
                 var currentImage = document.getElementById("currentImage")
                 setInterval(function () {
                     currentImage.src = "/picture/current?_hash_=" + new Date().getTime();
-                }, 5000000) // TODO: change this back to 5000, get from config/2 or something...
+                }, '{{.PicTime}}000')
             });
         </script>
         <fieldset>
@@ -106,7 +106,7 @@
     }
 </style>
 <nav>
-    <a href="/admin" class="pure-button"><i class="fa fa-home"></i> Home</a>
+    <a href="{{.Home}}" class="pure-button"><i class="fa fa-home"></i> Home</a>
     <a href="/my/pictures/upload" class="pure-button"><i class="fa fa-upload"></i> Upload</a>
     <span class="spacer"></span>
     <a href="/logout" class="pure-button"><i class="fa fa-sign-out-alt"></i> Logout</a>
