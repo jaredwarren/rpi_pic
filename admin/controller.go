@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/app"
+	"github.com/jaredwarren/rpi_pic/email"
 	"github.com/jaredwarren/rpi_pic/form"
 	"github.com/jaredwarren/rpi_pic/picture"
 	"github.com/jaredwarren/rpi_pic/user"
@@ -27,10 +28,11 @@ type Controller struct {
 	udb         *user.Store
 	service     *app.Service
 	cookieStore *sessions.CookieStore
+	sender      email.Sender
 }
 
 // NewAdminController creates a home controller.
-func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sessions.CookieStore) *Controller {
+func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sessions.CookieStore, sender email.Sender) *Controller {
 	// TODO: remove this
 	{
 		// force create admin user user for testing
@@ -55,6 +57,7 @@ func NewAdminController(service *app.Service, udb *user.Store, cookieStore *sess
 		udb:         udb,
 		service:     service,
 		cookieStore: cookieStore,
+		sender:      sender,
 	}
 }
 

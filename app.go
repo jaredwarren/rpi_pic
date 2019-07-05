@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/jaredwarren/rpi_pic/email"
+
 	"github.com/gorilla/sessions"
 	"github.com/jaredwarren/rpi_pic/admin"
 	"github.com/jaredwarren/rpi_pic/app"
@@ -65,7 +67,7 @@ func main() {
 	// pc := picture.NewPictureController(service)
 	// picture.MountPictureController(service, pc)
 
-	ac := admin.NewAdminController(service, userStore, cookieStore)
+	ac := admin.NewAdminController(service, userStore, cookieStore, &email.Email{})
 	admin.MountAdminController(service, ac)
 
 	rc := root.NewRootController(service, userStore, cookieStore)

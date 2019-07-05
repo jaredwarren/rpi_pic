@@ -24,19 +24,13 @@
 </style>
 
 <script>
+    var interv
     document.addEventListener("DOMContentLoaded", function () {
-            setInterval(function () {
-                var started = new Date().getTime();
-
+            interv = setInterval(function () {
                 var http = new XMLHttpRequest();
-
-                http.open("GET", '/health_check', /*async*/true);
+                http.open("GET", '/health_check', /*async*/false);
                 http.onreadystatechange = function () {
                     if (http.readyState == 4) {
-                        var ended = new Date().getTime();
-
-                        var milliseconds = ended - started;
-
                         if (pong != null) {
                             pong();
                         }
@@ -47,9 +41,10 @@
                 } catch (exception) {
                     // this is expected
                 }
-            }, '2000')
+            }, '4000')
         });
     function pong(ms){
+        clearInterval(interv)
         document.querySelectorAll('.hidden').forEach(function(e){
             e.className = ""
         });

@@ -84,9 +84,13 @@ func CsrfForm(next http.HandlerFunc) http.HandlerFunc {
 			fmt.Println("  [E] form expired:", tokenHash)
 			// session.AddFlash("Login Failed, Please try again.")
 
-			// TODO: how to detect recirect loops!!!!!
+			// TODO: how to detect recirect loops
+			if r.RequestURI != r.URL.String() {
+				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			} else {
+				http.Redirect(w, r, "/", http.StatusFound)
+			}
 
-			http.Redirect(w, r, r.URL.String(), http.StatusFound) /// hopefully this doesn't create a loop
 			return
 		}
 

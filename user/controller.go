@@ -35,6 +35,7 @@ func NewUserController(service *app.Service, udb *Store, cookieStore *sessions.C
 
 // MountUserController "mounts" a Home resource controller on the given service.
 func MountUserController(service *app.Service, ctrl *Controller) {
+	service.Mux.HandleFunc("/", ctrl.Home)
 	service.Mux.HandleFunc("/health_check", ctrl.HealthCheck)
 
 	// user register form
@@ -73,6 +74,28 @@ func CsrfToken() string {
 // GetHash returns random string
 func GetHash() string {
 	return form.GetHash(32)
+}
+
+// Home ...
+func (c *Controller) Home(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Home:", r.URL.String())
+
+	session, _ := c.cookieStore.Get(r, "user-session")
+	currentUser, err := GetCurrentUser(r, session, c.udb)
+	if err != nil {
+		session.AddFlash("Username not found, Please try again.")
+		session.Save(r, w)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	home := "/my/pictures"
+	if currentUser.Root {
+		home = "/root"
+	} else if currentUser.Admin {
+		home = "/admin"
+	}
+	http.Redirect(w, r, home, http.StatusFound)
 }
 
 // Current ...
@@ -231,10 +254,10 @@ func (c *Controller) ListPictures(w http.ResponseWriter, r *http.Request) {
 	})
 
 	home := ""
-	if currentUser.Admin {
-		home = "/admin"
-	} else if currentUser.Root {
+	if currentUser.Root {
 		home = "/root"
+	} else if currentUser.Admin {
+		home = "/admin"
 	}
 
 	// parse every time to make updates easier, and save memory
