@@ -61,7 +61,11 @@
                 <span class="pure-form-message-inline">Restart Device.</span>
             </div>
             <div class="pure-control-group">
-                <a href="/root/update" class="pure-button pure-button-primary"><i class="fas fa-sync"></i> Update</a>
+                <a href="/root/update" class="pure-button pure-button-primary"><i class="fas fa-file-import"></i> Update</a>
+                <span class="pure-form-message-inline">Restart Device.</span>
+            </div>
+            <div class="pure-control-group">
+                <a href="/root/restore" onclick="return confirm('Are you sure?\nThis cannot be undone!')" {{if not .HasRestore}}disabled="disabled"{{end}} class="pure-button pure-button-primary"><i class="fas fa-undo"></i> Restore</a>
                 <span class="pure-form-message-inline">Restart Device.</span>
             </div>
 
